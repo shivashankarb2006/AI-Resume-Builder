@@ -34,7 +34,31 @@ def set_cell_shading(cell, fill):
     tc_pr.append(shd)
 
 
-def add_bottom_border(paragraph, color="000000", size="6"):
+def remove_table_borders(table):
+    """Remove table borders."""
+
+    tbl = table._tbl
+    tbl_pr = tbl.tblPr
+
+    borders = OxmlElement("w:tblBorders")
+
+    for edge in (
+        "top",
+        "left",
+        "bottom",
+        "right",
+        "insideH",
+        "insideV"
+    ):
+
+        element = OxmlElement(f"w:{edge}")
+        element.set(qn("w:val"), "nil")
+        borders.append(element)
+
+    tbl_pr.append(borders)
+
+
+def add_bottom_border(paragraph, color="000000"):
     """Add a line below a paragraph."""
 
     p = paragraph._p
@@ -44,51 +68,140 @@ def add_bottom_border(paragraph, color="000000", size="6"):
     bottom = OxmlElement("w:bottom")
 
     bottom.set(qn("w:val"), "single")
-    bottom.set(qn("w:sz"), size)
-    bottom.set(qn("w:space"), "1")
+    bottom.set(qn("w:sz"), "6")
+    bottom.set(qn("w:space"), "2")
     bottom.set(qn("w:color"), color)
 
     pBdr.append(bottom)
     pPr.append(pBdr)
 
 
-def set_cell_margins(cell, top=80, start=100, bottom=80, end=100):
-    """Set table cell margins."""
+def add_section_heading(
+    document,
+    text,
+    template
+):
 
-    tc = cell._tc
-    tcPr = tc.get_or_add_tcPr()
+    paragraph = document.add_paragraph()
 
-    tcMar = tcPr.first_child_found_in("w:tcMar")
+    if template == "Modern Professional":
 
-    if tcMar is None:
-        tcMar = OxmlElement("w:tcMar")
-        tcPr.append(tcMar)
+        paragraph.paragraph_format.space_before = Pt(9)
+        paragraph.paragraph_format.space_after = Pt(3)
 
-    for margin, value in [
-        ("top", top),
-        ("start", start),
-        ("bottom", bottom),
-        ("end", end),
-    ]:
+        run = paragraph.add_run(text.upper())
 
-        node = tcMar.find(qn(f"w:{margin}"))
+        run.bold = True
+        run.font.name = "Calibri"
+        run.font.size = Pt(11)
+        run.font.color.rgb = RGBColor(
+            31,
+            78,
+            121
+        )
 
-        if node is None:
-            node = OxmlElement(f"w:{margin}")
-            tcMar.append(node)
+        add_bottom_border(
+            paragraph,
+            "B7C9D6"
+        )
 
-        node.set(qn("w:w"), str(value))
-        node.set(qn("w:type"), "dxa")
+    elif template == "Minimal Student":
+
+        paragraph.paragraph_format.space_before = Pt(5)
+        paragraph.paragraph_format.space_after = Pt(2)
+
+        run = paragraph.add_run(text.upper())
+
+        run.bold = True
+        run.font.name = "Arial"
+        run.font.size = Pt(10)
+
+    else:
+
+        paragraph.paragraph_format.space_before = Pt(8)
+        paragraph.paragraph_format.space_after = Pt(3)
+
+        run = paragraph.add_run(text.upper())
+
+        run.bold = True
+        run.font.name = "Arial"
+        run.font.size = Pt(11)
+
+        add_bottom_border(
+            paragraph
+        )
+
+    return paragraph
 
 
-def create_docx(resume_text, template="Classic ATS"):
+def add_content(
+    document,
+    line,
+    template
+):
+
+    if line.startswith("-") or line.startswith("•"):
+
+        clean_line = line.lstrip("-•").strip()
+
+        paragraph = document.add_paragraph(
+            style="List Bullet"
+        )
+
+        paragraph.paragraph_format.space_after = Pt(
+            1 if template == "Minimal Student" else 2
+        )
+
+        run = paragraph.add_run(
+            clean_line
+        )
+
+    else:
+
+        paragraph = document.add_paragraph()
+
+        paragraph.paragraph_format.space_after = Pt(
+            2 if template == "Minimal Student" else 3
+        )
+
+        run = paragraph.add_run(
+            line
+        )
+
+    if template == "Modern Professional":
+
+        run.font.name = "Calibri"
+        run.font.size = Pt(10)
+
+    elif template == "Minimal Student":
+
+        run.font.name = "Arial"
+        run.font.size = Pt(9.5)
+
+    else:
+
+        run.font.name = "Arial"
+        run.font.size = Pt(10)
+
+    return paragraph
+
+
+def create_docx(
+    resume_text,
+    template="Classic ATS"
+):
+
+    file_path = (
+        f"AI_Resume_"
+        f"{template.replace(' ', '_')}.docx"
+    )
 
     document = Document()
 
     section = document.sections[0]
 
     # =====================================================
-    # TEMPLATE SETTINGS
+    # PAGE SETTINGS
     # =====================================================
 
     if template == "Modern Professional":
@@ -98,13 +211,6 @@ def create_docx(resume_text, template="Classic ATS"):
         section.left_margin = Inches(0.65)
         section.right_margin = Inches(0.65)
 
-        font_name = "Calibri"
-        body_size = 10
-        heading_size = 11
-        name_size = 23
-
-        accent_color = RGBColor(31, 78, 121)
-
     elif template == "Minimal Student":
 
         section.top_margin = Inches(0.45)
@@ -112,154 +218,237 @@ def create_docx(resume_text, template="Classic ATS"):
         section.left_margin = Inches(0.55)
         section.right_margin = Inches(0.55)
 
-        font_name = "Arial"
-        body_size = 9
-        heading_size = 10
-        name_size = 17
-
-        accent_color = RGBColor(0, 0, 0)
-
     else:
-
-        # Classic ATS
 
         section.top_margin = Inches(0.6)
         section.bottom_margin = Inches(0.6)
         section.left_margin = Inches(0.7)
         section.right_margin = Inches(0.7)
 
-        font_name = "Arial"
-        body_size = 10
-        heading_size = 11
-        name_size = 20
-
-        accent_color = RGBColor(0, 0, 0)
-
     # =====================================================
-    # DEFAULT STYLE
+    # NORMAL STYLE
     # =====================================================
 
     normal_style = document.styles["Normal"]
 
-    normal_style.font.name = font_name
-    normal_style.font.size = Pt(body_size)
+    if template == "Modern Professional":
+
+        normal_style.font.name = "Calibri"
+        normal_style.font.size = Pt(10)
+
+    elif template == "Minimal Student":
+
+        normal_style.font.name = "Arial"
+        normal_style.font.size = Pt(9.5)
+
+    else:
+
+        normal_style.font.name = "Arial"
+        normal_style.font.size = Pt(10)
 
     # =====================================================
-    # RESUME LINES
+    # READ RESUME
     # =====================================================
 
-    lines = resume_text.split("\n")
+    lines = [
+        line.strip()
+        for line in resume_text.split("\n")
+        if line.strip()
+    ]
 
     if not lines:
-        return None
+        document.save(file_path)
+        return file_path
+
+    name = lines[0]
+
+    remaining_lines = lines[1:]
 
     # =====================================================
-    # HEADER
+    # MODERN PROFESSIONAL HEADER
     # =====================================================
 
-    name = lines[0].strip()
+    if template == "Modern Professional":
 
-    if name:
+        header_table = document.add_table(
+            rows=1,
+            cols=1
+        )
 
-        if template == "Modern Professional":
+        header_table.alignment = (
+            WD_TABLE_ALIGNMENT.CENTER
+        )
 
-            # Modern colored header box
+        remove_table_borders(
+            header_table
+        )
 
-            table = document.add_table(
-                rows=1,
-                cols=1
-            )
+        cell = header_table.cell(0, 0)
 
-            table.alignment = WD_TABLE_ALIGNMENT.CENTER
-            table.autofit = True
+        set_cell_shading(
+            cell,
+            "EAF1F8"
+        )
 
-            cell = table.cell(0, 0)
+        cell.vertical_alignment = (
+            WD_CELL_VERTICAL_ALIGNMENT.CENTER
+        )
 
-            set_cell_shading(
-                cell,
-                "1F4E79"
-            )
+        paragraph = cell.paragraphs[0]
 
-            set_cell_margins(
-                cell,
-                top=180,
-                bottom=180,
-                start=180,
-                end=180
-            )
+        paragraph.alignment = (
+            WD_ALIGN_PARAGRAPH.LEFT
+        )
 
-            cell.vertical_alignment = (
-                WD_CELL_VERTICAL_ALIGNMENT.CENTER
-            )
+        paragraph.paragraph_format.space_after = Pt(2)
 
-            paragraph = cell.paragraphs[0]
+        run = paragraph.add_run(name)
 
-            paragraph.alignment = (
-                WD_ALIGN_PARAGRAPH.LEFT
-            )
+        run.bold = True
+        run.font.name = "Calibri"
+        run.font.size = Pt(22)
+        run.font.color.rgb = RGBColor(
+            31,
+            78,
+            121
+        )
 
-            run = paragraph.add_run(name)
+        # Add contact information
+        contact_lines = []
 
-            run.bold = True
-            run.font.name = "Calibri"
-            run.font.size = Pt(name_size)
-            run.font.color.rgb = RGBColor(
-                255,
-                255,
-                255
-            )
+        for line in remaining_lines:
 
-            document.add_paragraph()
+            if (
+                "@" in line
+                or "linkedin.com" in line.lower()
+                or "github.com" in line.lower()
+                or line.startswith("+91")
+            ):
 
-        elif template == "Minimal Student":
+                contact_lines.append(line)
 
-            paragraph = document.add_paragraph()
+        if contact_lines:
 
-            paragraph.alignment = (
-                WD_ALIGN_PARAGRAPH.CENTER
-            )
-
-            run = paragraph.add_run(name)
-
-            run.bold = True
-            run.font.name = "Arial"
-            run.font.size = Pt(name_size)
-
-            paragraph.paragraph_format.space_after = Pt(2)
-
-        else:
-
-            # Classic ATS
-
-            paragraph = document.add_paragraph()
-
-            paragraph.alignment = (
-                WD_ALIGN_PARAGRAPH.CENTER
-            )
-
-            run = paragraph.add_run(name)
-
-            run.bold = True
-            run.font.name = "Arial"
-            run.font.size = Pt(name_size)
+            paragraph = cell.add_paragraph()
 
             paragraph.paragraph_format.space_after = Pt(3)
 
+            run = paragraph.add_run(
+                "  |  ".join(contact_lines)
+            )
+
+            run.font.name = "Calibri"
+            run.font.size = Pt(9)
+
+        document.add_paragraph()
+
     # =====================================================
-    # PROCESS CONTENT
+    # MINIMAL STUDENT HEADER
     # =====================================================
 
-    for raw_line in lines[1:]:
+    elif template == "Minimal Student":
 
-        line = raw_line.strip()
+        paragraph = document.add_paragraph()
 
-        if not line:
-            continue
+        paragraph.alignment = (
+            WD_ALIGN_PARAGRAPH.CENTER
+        )
 
-        # -------------------------------------------------
-        # CONTACT INFORMATION
-        # -------------------------------------------------
+        paragraph.paragraph_format.space_after = Pt(2)
 
+        run = paragraph.add_run(name)
+
+        run.bold = True
+        run.font.name = "Arial"
+        run.font.size = Pt(16)
+
+        contact_lines = []
+
+        for line in remaining_lines:
+
+            if (
+                "@" in line
+                or "linkedin.com" in line.lower()
+                or "github.com" in line.lower()
+                or line.startswith("+91")
+            ):
+
+                contact_lines.append(line)
+
+        if contact_lines:
+
+            paragraph = document.add_paragraph()
+
+            paragraph.alignment = (
+                WD_ALIGN_PARAGRAPH.CENTER
+            )
+
+            paragraph.paragraph_format.space_after = Pt(5)
+
+            run = paragraph.add_run(
+                " | ".join(contact_lines)
+            )
+
+            run.font.name = "Arial"
+            run.font.size = Pt(8.5)
+
+    # =====================================================
+    # CLASSIC ATS HEADER
+    # =====================================================
+
+    else:
+
+        paragraph = document.add_paragraph()
+
+        paragraph.alignment = (
+            WD_ALIGN_PARAGRAPH.CENTER
+        )
+
+        paragraph.paragraph_format.space_after = Pt(3)
+
+        run = paragraph.add_run(name)
+
+        run.bold = True
+        run.font.name = "Arial"
+        run.font.size = Pt(18)
+
+        contact_lines = []
+
+        for line in remaining_lines:
+
+            if (
+                "@" in line
+                or "linkedin.com" in line.lower()
+                or "github.com" in line.lower()
+                or line.startswith("+91")
+            ):
+
+                contact_lines.append(line)
+
+        if contact_lines:
+
+            paragraph = document.add_paragraph()
+
+            paragraph.alignment = (
+                WD_ALIGN_PARAGRAPH.CENTER
+            )
+
+            paragraph.paragraph_format.space_after = Pt(6)
+
+            run = paragraph.add_run(
+                " | ".join(contact_lines)
+            )
+
+            run.font.name = "Arial"
+            run.font.size = Pt(9)
+
+    # =====================================================
+    # CONTENT
+    # =====================================================
+
+    for line in remaining_lines:
+
+        # Skip contact lines already placed in header
         if (
             "@" in line
             or "linkedin.com" in line.lower()
@@ -267,139 +456,55 @@ def create_docx(resume_text, template="Classic ATS"):
             or line.startswith("+91")
         ):
 
-            paragraph = document.add_paragraph()
-
-            paragraph.alignment = (
-                WD_ALIGN_PARAGRAPH.CENTER
-            )
-
-            run = paragraph.add_run(line)
-
-            run.font.name = font_name
-            run.font.size = Pt(9)
-
-            if template == "Modern Professional":
-
-                run.font.color.rgb = accent_color
-
-            paragraph.paragraph_format.space_after = Pt(5)
-
             continue
 
-        # -------------------------------------------------
-        # SECTION HEADINGS
-        # -------------------------------------------------
-
+        # Section heading
         if line.upper() in SECTION_NAMES:
 
-            paragraph = document.add_paragraph()
-
-            if template == "Modern Professional":
-
-                paragraph.paragraph_format.space_before = Pt(9)
-                paragraph.paragraph_format.space_after = Pt(3)
-
-            elif template == "Minimal Student":
-
-                paragraph.paragraph_format.space_before = Pt(5)
-                paragraph.paragraph_format.space_after = Pt(2)
-
-            else:
-
-                paragraph.paragraph_format.space_before = Pt(8)
-                paragraph.paragraph_format.space_after = Pt(3)
-
-            run = paragraph.add_run(
-                line.upper()
-            )
-
-            run.bold = True
-            run.font.name = font_name
-            run.font.size = Pt(heading_size)
-            run.font.color.rgb = accent_color
-
-            if template == "Modern Professional":
-
-                add_bottom_border(
-                    paragraph,
-                    color="1F4E79",
-                    size="8"
-                )
-
-            elif template == "Minimal Student":
-
-                add_bottom_border(
-                    paragraph,
-                    color="000000",
-                    size="4"
-                )
-
-            else:
-
-                add_bottom_border(
-                    paragraph,
-                    color="000000",
-                    size="6"
-                )
-
-            continue
-
-        # -------------------------------------------------
-        # BULLET POINTS
-        # -------------------------------------------------
-
-        if line.startswith("-") or line.startswith("•"):
-
-            clean_line = line.lstrip("-•").strip()
-
-            paragraph = document.add_paragraph(
-                style="List Bullet"
-            )
-
-            if template == "Minimal Student":
-
-                paragraph.paragraph_format.space_after = Pt(1)
-
-            else:
-
-                paragraph.paragraph_format.space_after = Pt(2)
-
-            run = paragraph.add_run(
-                clean_line
-            )
-
-            run.font.name = font_name
-            run.font.size = Pt(
-                9 if template == "Minimal Student"
-                else 10
+            add_section_heading(
+                document,
+                line,
+                template
             )
 
             continue
 
-        # -------------------------------------------------
-        # NORMAL CONTENT
-        # -------------------------------------------------
+        # Normal content
+        add_content(
+            document,
+            line,
+            template
+        )
 
-        paragraph = document.add_paragraph()
+    # =====================================================
+    # MODERN FOOTER
+    # =====================================================
 
-        if template == "Minimal Student":
+    if template == "Modern Professional":
 
-            paragraph.paragraph_format.space_after = Pt(2)
+        footer = section.footer
 
-        else:
+        paragraph = footer.paragraphs[0]
 
-            paragraph.paragraph_format.space_after = Pt(3)
+        paragraph.alignment = (
+            WD_ALIGN_PARAGRAPH.CENTER
+        )
 
-        run = paragraph.add_run(line)
+        run = paragraph.add_run(
+            "Professional Resume"
+        )
 
-        run.font.name = font_name
-        run.font.size = Pt(body_size)
+        run.font.name = "Calibri"
+        run.font.size = Pt(8)
+        run.font.color.rgb = RGBColor(
+            100,
+            100,
+            100
+        )
 
     # =====================================================
     # SAVE
     # =====================================================
-
-    file_path = "AI_Resume.docx"
 
     document.save(file_path)
 
