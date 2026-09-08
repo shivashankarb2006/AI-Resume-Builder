@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ personal_info.full_name }} - Resume</title>
+  <style>
+    @page {
+      size: letter;
+      margin: 0.6in;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: #111827;
+      line-height: 1.45;
+      font-size: 10.5pt;
+      margin: 0;
+      padding: 0;
+      background-color: #ffffff;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 14pt;
+    }
+    .name {
+      font-size: 20pt;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      margin: 0 0 2pt 0;
+      color: #0f172a;
+    }
+    .title {
+      font-size: 11pt;
+      font-weight: 600;
+      color: #334155;
+      margin: 0 0 4pt 0;
+    }
+    .contact-info {
+      font-size: 9.5pt;
+      color: #475569;
+    }
+    .contact-info a {
+      color: #0284c7;
+      text-decoration: none;
+    }
+    .section-title {
+      font-size: 11pt;
+      font-weight: 700;
+      color: #0f172a;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1.5px solid #cbd5e1;
+      padding-bottom: 2pt;
+      margin-top: 12pt;
+      margin-bottom: 6pt;
+    }
+    .item-header {
+      display: flex;
+      justify-content: space-between;
+      font-weight: 700;
+      font-size: 10.5pt;
+      color: #1e293b;
+      margin-bottom: 1pt;
+    }
+    .item-subheader {
+      display: flex;
+      justify-content: space-between;
+      font-style: italic;
+      color: #475569;
+      font-size: 9.5pt;
+      margin-bottom: 3pt;
+    }
+    .bullet-list {
+      margin: 2pt 0 6pt 0;
+      padding-left: 18pt;
+    }
+    .bullet-list li {
+      margin-bottom: 2pt;
+      color: #334155;
+    }
+    .skills-block p {
+      margin: 2pt 0;
+      font-size: 10pt;
+    }
+    .skills-block strong {
+      color: #0f172a;
+    }
+    @media print {
+      body {
+        background-color: transparent;
+      }
+      .no-print {
+        display: none !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- HEADER -->
+  <div class="header">
+    <div class="name">{{ personal_info.full_name }}</div>
+    {% if personal_info.professional_title %}
+    <div class="title">{{ personal_info.professional_title }}</div>
+    {% endif %}
+    <div class="contact-info">
+      {{ contact_line }}
+    </div>
+  </div>
+
+  <!-- PROFESSIONAL SUMMARY -->
+  {% if professional_summary %}
+  <div class="section-title">Professional Summary</div>
+  <p style="margin: 0 0 8pt 0; text-align: justify;">{{ professional_summary }}</p>
+  {% endif %}
+
+  <!-- SKILLS -->
+  {% if skills %}
+  <div class="section-title">Technical Skills</div>
+  <div class="skills-block">
+    {{ skills_html }}
+  </div>
+  {% endif %}
+
+  <!-- EXPERIENCE -->
+  {% if experience %}
+  <div class="section-title">Work Experience</div>
+  {% for exp in experience %}
+  <div style="margin-bottom: 8pt;">
+    <div class="item-header">
+      <span>{{ exp.role }}</span>
+      <span>{{ exp.duration }}</span>
+    </div>
+    <div class="item-subheader">
+      <span>{{ exp.company }}</span>
+      <span>{{ exp.location }}</span>
+    </div>
+    <ul class="bullet-list">
+      {% for bp in exp.bullet_points %}
+      <li>{{ bp }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  <!-- PROJECTS -->
+  {% if projects %}
+  <div class="section-title">Technical Projects</div>
+  {% for proj in projects %}
+  <div style="margin-bottom: 8pt;">
+    <div class="item-header">
+      <span>{{ proj.name }} {% if proj.technologies %}<span style="font-weight: 400; font-size: 9.5pt; color: #475569;">| {{ proj.technologies }}</span>{% endif %}</span>
+      {% if proj.urls %}<span style="font-weight: 400; font-size: 9pt;">{{ proj.urls }}</span>{% endif %}
+    </div>
+    <ul class="bullet-list">
+      {% for bp in proj.bullet_points %}
+      <li>{{ bp }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  <!-- EDUCATION -->
+  {% if education %}
+  <div class="section-title">Education</div>
+  {% for edu in education %}
+  <div style="margin-bottom: 6pt;">
+    <div class="item-header">
+      <span>{{ edu.degree }}{% if edu.field_of_study %} in {{ edu.field_of_study }}{% endif %}</span>
+      <span>{{ edu.year }}</span>
+    </div>
+    <div class="item-subheader">
+      <span>{{ edu.institution }}</span>
+      {% if edu.gpa %}<span>GPA: {{ edu.gpa }}</span>{% endif %}
+    </div>
+    {% if edu.highlights %}
+    <p style="margin: 1pt 0 0 0; font-size: 9.5pt; color: #475569;">{{ edu.highlights }}</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  <!-- CERTIFICATIONS -->
+  {% if certifications %}
+  <div class="section-title">Certifications</div>
+  <ul class="bullet-list">
+    {% for cert in certifications %}
+    {% if cert.name %}
+    <li><strong>{{ cert.name }}</strong> – {{ cert.organization }} ({{ cert.date }})</li>
+    {% endif %}
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <!-- ACHIEVEMENTS -->
+  {% if achievements %}
+  <div class="section-title">Key Achievements & Honors</div>
+  <ul class="bullet-list">
+    {% for ach in achievements %}
+    {% if ach %}
+    <li>{{ ach }}</li>
+    {% endif %}
+    {% endfor %}
+  </ul>
+  {% endif %}
+</body>
+</html>

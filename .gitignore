@@ -1,6 +1,27 @@
-.env
+# Virtual Environment
 venv/
-__pycache__/
+env/
+ENV/
+.venv/
+
+# Environment Variables & Secrets
+.env
+.env.local
 .streamlit/secrets.toml
-resume_profiles.json
-*.pyc
+
+# Python Cache & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Output files
+*.docx
+*.pdf
+!templates/*.html
