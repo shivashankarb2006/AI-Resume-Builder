@@ -65,11 +65,17 @@ if css_file.exists():
 if "resume_data" not in st.session_state:
     st.session_state.resume_data = ResumeData()
 
-if "ollama_model" not in st.session_state:
-    st.session_state.ollama_model = config.OLLAMA_MODEL
-
 if "ollama_base_url" not in st.session_state:
-    st.session_state.ollama_base_url = config.OLLAMA_BASE_URL
+    try:
+        st.session_state.ollama_base_url = st.secrets.get("OLLAMA_BASE_URL", config.OLLAMA_BASE_URL)
+    except Exception:
+        st.session_state.ollama_base_url = config.OLLAMA_BASE_URL
+
+if "ollama_model" not in st.session_state:
+    try:
+        st.session_state.ollama_model = st.secrets.get("OLLAMA_MODEL", config.OLLAMA_MODEL)
+    except Exception:
+        st.session_state.ollama_model = config.OLLAMA_MODEL
 
 
 # Initialize AI Client
@@ -131,12 +137,26 @@ with st.sidebar:
             ai_client.model = selected_m
             st.rerun()
     else:
-        st.text_input(
+        new_m = st.text_input(
             "Model Name",
             value=st.session_state.ollama_model,
             key="model_name_input",
             help="Default model e.g. llama3.2. Run 'ollama pull llama3.2' in terminal to install.",
         )
+        if new_m != st.session_state.ollama_model:
+            st.session_state.ollama_model = new_m
+            ai_client.model = new_m
+
+    with st.expander("🌐 Cloud / Endpoint Settings", expanded=False):
+        custom_url = st.text_input(
+            "Ollama Server URL",
+            value=st.session_state.ollama_base_url,
+            help="Default: http://localhost:11434. If deployed to Streamlit Cloud, enter your tunnel or remote URL here.",
+        )
+        if custom_url != st.session_state.ollama_base_url:
+            st.session_state.ollama_base_url = custom_url
+            ai_client.base_url = custom_url
+            st.rerun()
 
     st.divider()
 
