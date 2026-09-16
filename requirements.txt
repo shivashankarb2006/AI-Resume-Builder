@@ -1,14 +1,7 @@
-# Web Application Framework
-streamlit>=1.35.0
-
-# Anthropic Claude API Client
-anthropic>=0.30.0
-
-# Resume Document Generation (DOCX)
-python-docx>=1.1.0
-
-# Environment Variable Management
+streamlit>=1.30.0
+pydantic>=2.0.0
+reportlab>=4.0.0
+python-docx>=1.0.0
 python-dotenv>=1.0.0
-
-# Unit Testing Framework
+requests>=2.31.0
 pytest>=8.0.0

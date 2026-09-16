@@ -1,5 +1,5 @@
 [theme]
-primaryColor = "#38bdf8"
+primaryColor = "#2563eb"
 backgroundColor = "#ffffff"
 secondaryBackgroundColor = "#f8fafc"
 textColor = "#0f172a"
@@ -9,4 +9,4 @@ font = "sans serif"
 headless = true
 enableCORS = false
 enableXsrfProtection = true
-maxUploadSize = 5
+maxUploadSize = 10

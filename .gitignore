@@ -1,27 +1,47 @@
-# Virtual Environment
-venv/
-env/
-ENV/
-.venv/
-
-# Environment Variables & Secrets
-.env
-.env.local
-.streamlit/secrets.toml
-
-# Python Cache & Bytecode
+# Python cache
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
-.pytest_cache/
+.Python
 
-# Operating System Files
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# Environment files
+.env
+.env.local
+
+# Streamlit local state / secrets
+.streamlit/secrets.toml
+
+# IDE & OS
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
 .DS_Store
 Thumbs.db
-desktop.ini
 
-# Output files
-*.docx
+# Testing and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build and distribution
+build/
+dist/
+*.egg-info/
+
+# User generated outputs during local runs
+output/
+scratch/
 *.pdf
-!templates/*.html
+*.docx
+!assets/*.pdf
+!assets/*.docx

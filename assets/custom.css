@@ -1,0 +1,72 @@
+/* Modern Minimalist Professional Styling for AI Resume Builder */
+
+/* Main Container max width and padding */
+.main .block-container {
+    padding-top: 1.5rem;
+    padding-bottom: 3rem;
+    max-width: 1200px;
+}
+
+/* Card container helper */
+.stCard {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+/* Header badge styling */
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 9999px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.status-online {
+    background-color: #dcfce7;
+    color: #15803d;
+    border: 1px solid #bbf7d0;
+}
+
+.status-offline {
+    background-color: #fee2e2;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+}
+
+/* Metric card */
+.ats-metric-card {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    color: white;
+    padding: 24px;
+    border-radius: 12px;
+    text-align: center;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.15);
+}
+
+.ats-score-display {
+    font-size: 3.2rem;
+    font-weight: 800;
+    line-height: 1;
+    margin: 8px 0;
+    background: linear-gradient(90deg, #38bdf8, #818cf8);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* Subtle notice box */
+.privacy-badge {
+    background-color: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.82rem;
+    color: #475569;
+    margin-bottom: 12px;
+}

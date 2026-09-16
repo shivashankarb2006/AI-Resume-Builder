@@ -1,993 +1,827 @@
 """
-AI Resume Builder - Main Application Entry Point
-Phase 2: Comprehensive Multi-Section Resume Form & Validation
+Main Streamlit Application for AI Resume Builder.
+A modern, production-grade, 100% local, ATS-friendly resume generator and analyzer.
 """
-
 import os
+import sys
+from pathlib import Path
 import streamlit as st
-from dotenv import load_dotenv
-from src.validators import validate_email, validate_url, validate_profile
-from src.prompts import RESUME_SYSTEM_PROMPT, build_resume_generation_prompt
-from src.claude_api import get_api_key, call_claude_json, get_mock_resume_data
-from src.resume_generator import generate_resume_pipeline
-from src.docx_generator import build_docx_resume
-from src.ats_analyzer import analyze_ats_compatibility
 
-# Load environment variables from .env
-load_dotenv()
+# Ensure project root is in python path
+BASE_DIR = Path(__file__).resolve().parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
 
-# ==========================================
-# 1. PAGE CONFIGURATION
-# ==========================================
+import config
+from models.resume_schema import (
+    ResumeData,
+    PersonalInfo,
+    EducationEntry,
+    SkillsData,
+    SkillCategory,
+    ExperienceEntry,
+    ProjectEntry,
+    CertificationEntry,
+    AchievementEntry,
+    VolunteerEntry,
+    TargetJob,
+)
+from ai.ollama_client import OllamaClient
+from ai.resume_generator import (
+    generate_professional_summary,
+    improve_experience_bullets,
+    improve_project_bullets,
+)
+from ai.analyzer import (
+    calculate_ats_score,
+    match_resume_with_job,
+    analyze_resume_with_ai,
+)
+from resume.templates import RESUME_TEMPLATES, TEMPLATE_CONFIGS
+from resume.renderer import render_resume_html
+from resume.pdf_generator import generate_resume_pdf
+from resume.docx_generator import generate_resume_docx
+from utils.validation import validate_email, validate_url, validate_phone
+from utils.helpers import generate_resume_filename, split_lines_or_commas
+from utils.sample_data import get_sample_resume_data
+
+
+# --- Page Configuration ---
 st.set_page_config(
-    page_title="AI Resume Builder | ATS-Optimized",
+    page_title=f"{config.APP_TITLE} — ATS Resume Generator",
     page_icon="📄",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# ==========================================
-# 2. CUSTOM CSS (MODERN SAAS STYLING)
-# ==========================================
-st.markdown(
-    """
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+# Load CSS
+css_file = BASE_DIR / "assets" / "custom.css"
+if css_file.exists():
+    with open(css_file, "r", encoding="utf-8") as f:
+        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
-    html, body, [class*="css"] {
-        font-family: 'Inter', sans-serif;
-    }
 
-    .block-container {
-        padding-top: 1.5rem;
-        padding-bottom: 3rem;
-        max-width: 1250px;
-    }
+# --- Session State Initialization ---
+if "resume_data" not in st.session_state:
+    st.session_state.resume_data = ResumeData()
 
-    /* Hero Banner */
-    .hero-container {
-        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-        padding: 2rem 2.5rem;
-        border-radius: 16px;
-        color: white;
-        margin-bottom: 2rem;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
-    }
+if "ollama_model" not in st.session_state:
+    st.session_state.ollama_model = config.OLLAMA_MODEL
 
-    .hero-title {
-        font-size: 2.2rem;
-        font-weight: 700;
-        letter-spacing: -0.02em;
-        margin-bottom: 0.3rem;
-        background: linear-gradient(90deg, #38bdf8, #818cf8);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-    }
+if "ollama_base_url" not in st.session_state:
+    st.session_state.ollama_base_url = config.OLLAMA_BASE_URL
 
-    .hero-subtitle {
-        font-size: 1.05rem;
-        color: #94a3b8;
-        margin-bottom: 1rem;
-        font-weight: 400;
-    }
 
-    .badge {
-        display: inline-block;
-        padding: 0.25rem 0.75rem;
-        border-radius: 9999px;
-        font-size: 0.8rem;
-        font-weight: 600;
-        background-color: rgba(56, 189, 248, 0.15);
-        color: #38bdf8;
-        border: 1px solid rgba(56, 189, 248, 0.3);
-    }
-
-    /* Form Card Container */
-    .card-box {
-        background: #ffffff;
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        padding: 1.25rem;
-        margin-bottom: 1.25rem;
-        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
-    }
-
-    @media (prefers-color-scheme: dark) {
-        .card-box {
-            background: #1e293b;
-            border: 1px solid #334155;
-            color: #f8fafc;
-        }
-    }
-
-    .section-title {
-        font-size: 1.25rem;
-        font-weight: 600;
-        color: #0f172a;
-        margin-bottom: 0.5rem;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
-
-    @media (prefers-color-scheme: dark) {
-        .section-title {
-            color: #f8fafc;
-        }
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
+# Initialize AI Client
+ai_client = OllamaClient(
+    base_url=st.session_state.ollama_base_url,
+    model=st.session_state.ollama_model,
 )
 
-# ==========================================
-# 3. SESSION STATE INITIALIZATION & SAMPLES
-# ==========================================
-def get_sample_profile():
-    """Return a realistic sample candidate profile for instant testing."""
-    return {
-        "personal_info": {
-            "full_name": "Alex Johnson",
-            "professional_title": "Full Stack AI Developer",
-            "email": "alex.johnson@example.com",
-            "phone": "+1 (555) 234-5678",
-            "location": "San Francisco, CA",
-            "linkedin": "https://linkedin.com/in/alex-johnson-dev",
-            "github": "https://github.com/alexjohnson-ai",
-            "portfolio": "https://alexjohnson.dev",
-            "summary": "Passionate software engineer with hands-on experience building full-stack web applications and integrating large language models. Strong foundation in Python, TypeScript, and modern AI APIs.",
-        },
-        "education": [
-            {
-                "institution": "University of California, Berkeley",
-                "degree": "Bachelor of Science",
-                "field_of_study": "Computer Science",
-                "start_year": "2020",
-                "end_year": "2024",
-                "gpa": "3.85 / 4.0",
-                "coursework": "Data Structures & Algorithms, Database Systems, Artificial Intelligence, Distributed Systems",
-                "achievements": "Dean's Honor List (4 semesters), 1st Place at CalHacks 2023",
-            }
-        ],
-        "skills": {
-            "programming_languages": "Python, JavaScript, TypeScript, SQL, C++",
-            "frameworks": "Streamlit, React, FastAPI, Node.js, PyTorch, Pandas",
-            "databases": "PostgreSQL, MongoDB, Redis, SQLite",
-            "tools": "Git, GitHub Actions, Docker, AWS (S3, EC2), VS Code, Postman",
-            "soft_skills": "Problem Solving, Agile Collaboration, Cross-functional Communication, Technical Writing",
-        },
-        "projects": [
-            {
-                "name": "DocuChat - Multi-Document RAG Assistant",
-                "description": "Engineered an AI conversational search engine over corporate PDF documents using retrieval-augmented generation and vector databases.",
-                "technologies": "Python, FastAPI, LangChain, ChromaDB, Claude API",
-                "responsibilities": "Implemented document chunking, semantic vector embeddings, and real-time streaming chat responses.",
-                "results": "Decreased document search time by 65% across 200+ multi-page technical manuals.",
-                "github_url": "https://github.com/alexjohnson-ai/docuchat",
-                "demo_url": "https://docuchat-demo.streamlit.app",
-            },
-            {
-                "name": "E-Commerce Real-Time Inventory Tracker",
-                "description": "Architected a responsive full-stack inventory tracking dashboard with automated low-stock webhook alerts.",
-                "technologies": "React, TypeScript, Node.js, PostgreSQL, Docker",
-                "responsibilities": "Designed relational schema, RESTful APIs, and responsive front-end dashboard with charts.",
-                "results": "Maintained sub-100ms API response latency across 50,000 product SKU queries.",
-                "github_url": "https://github.com/alexjohnson-ai/inventory-tracker",
-                "demo_url": "https://inventory.alexjohnson.dev",
-            },
-        ],
-        "experience": [
-            {
-                "company": "NextGen AI Labs",
-                "role": "AI Software Engineer Intern",
-                "location": "San Francisco, CA",
-                "start_date": "Jun 2023",
-                "end_date": "Sep 2023",
-                "responsibilities": "Collaborated with senior engineers to design and deploy LLM evaluation pipelines. Built microservices for document parsing and prompt benchmarking.",
-                "achievements": "Automated prompt regression testing, cutting manual QA time by 15 hours weekly.",
-                "technologies": "Python, Anthropic API, pytest, Docker, FastAPI",
-            }
-        ],
-        "certifications": [
-            {
-                "name": "AWS Certified Cloud Practitioner",
-                "organization": "Amazon Web Services",
-                "date": "2023",
-                "credential_url": "https://aws.amazon.com/verification",
-            }
-        ],
-        "achievements": [
-            "Winner of CalHacks 2023 - Best LLM Application category (out of 350+ teams)",
-            "Published technical tutorial on Streamlit & LLM integrations with 15k+ reads",
-        ],
-        "target_job": """Senior / Junior AI Software Engineer
-Job Requirements:
-- Strong proficiency in Python, REST APIs, and modern web frameworks (Streamlit, FastAPI, or React)
-- Hands-on experience working with LLM APIs (Anthropic Claude, OpenAI), vector search, and prompt engineering
-- Solid understanding of relational databases (PostgreSQL/MySQL) and Docker containerization
-- Proven ability to write clean, modular, and test-driven code (pytest)
-- Excellent problem-solving, collaboration, and communication skills""",
-    }
+
+# --- Helper to load sample data ---
+def load_sample():
+    st.session_state.resume_data = get_sample_resume_data()
+    st.toast("✅ Sample demo profile loaded successfully!", icon="📋")
 
 
-def init_session_state():
-    """Ensure all required session state keys are safely initialized."""
-    if "resume_data" not in st.session_state:
-        st.session_state.resume_data = {
-            "personal_info": {
-                "full_name": "",
-                "professional_title": "",
-                "email": "",
-                "phone": "",
-                "location": "",
-                "linkedin": "",
-                "github": "",
-                "portfolio": "",
-                "summary": "",
-            },
-            "education": [
-                {
-                    "institution": "",
-                    "degree": "",
-                    "field_of_study": "",
-                    "start_year": "",
-                    "end_year": "",
-                    "gpa": "",
-                    "coursework": "",
-                    "achievements": "",
-                }
-            ],
-            "skills": {
-                "programming_languages": "",
-                "frameworks": "",
-                "databases": "",
-                "tools": "",
-                "soft_skills": "",
-            },
-            "projects": [
-                {
-                    "name": "",
-                    "description": "",
-                    "technologies": "",
-                    "responsibilities": "",
-                    "results": "",
-                    "github_url": "",
-                    "demo_url": "",
-                }
-            ],
-            "experience": [
-                {
-                    "company": "",
-                    "role": "",
-                    "location": "",
-                    "start_date": "",
-                    "end_date": "",
-                    "responsibilities": "",
-                    "achievements": "",
-                    "technologies": "",
-                }
-            ],
-            "certifications": [
-                {
-                    "name": "",
-                    "organization": "",
-                    "date": "",
-                    "credential_url": "",
-                }
-            ],
-            "achievements": [""],
-            "target_job": "",
-        }
-
-    if "validation_errors" not in st.session_state:
-        st.session_state.validation_errors = []
-
-    if "validation_success" not in st.session_state:
-        st.session_state.validation_success = False
+def clear_form():
+    st.session_state.resume_data = ResumeData()
+    st.toast("🧹 Form cleared. Ready for fresh resume entry.", icon="✨")
 
 
-init_session_state()
-
-# ==========================================
-# 4. SIDEBAR - SYSTEM STATUS & NAVIGATION
-# ==========================================
+# --- Sidebar Navigation & Controls ---
 with st.sidebar:
-    st.image("https://cdn-icons-png.flaticon.com/512/3135/3135768.png", width=64)
-    st.title("AI Resume Builder")
-    st.caption("Version 1.1.0 • Phase 2")
+    st.title("📄 AI Resume Builder")
+    st.caption("ATS-Friendly • 100% Local • Zero Cloud APIs")
 
-    st.markdown("---")
-
-    selected_page = st.radio(
-        "Navigation",
-        [
-            "🏠 Home & Overview",
-            "📝 Resume Builder",
-            "📊 AI & ATS Analysis",
-            "📄 Preview & Export",
-        ],
-        index=1,  # Default to Resume Builder during Phase 2 testing
-    )
-
-    st.markdown("---")
-
-    # Sample Profile Helper Buttons
-    st.subheader("Profile Tools")
-    col_btn1, col_btn2 = st.columns(2)
-    with col_btn1:
-        if st.button("✨ Load Sample", help="Populates form with a realistic AI Engineer profile"):
-            st.session_state.resume_data = get_sample_profile()
-            st.session_state.validation_errors = []
-            st.session_state.validation_success = True
-            st.rerun()
-    with col_btn2:
-        if st.button("🧹 Clear All", help="Resets all input fields"):
-            st.session_state.resume_data = {
-                "personal_info": {k: "" for k in ["full_name", "professional_title", "email", "phone", "location", "linkedin", "github", "portfolio", "summary"]},
-                "education": [{"institution": "", "degree": "", "field_of_study": "", "start_year": "", "end_year": "", "gpa": "", "coursework": "", "achievements": ""}],
-                "skills": {k: "" for k in ["programming_languages", "frameworks", "databases", "tools", "soft_skills"]},
-                "projects": [{"name": "", "description": "", "technologies": "", "responsibilities": "", "results": "", "github_url": "", "demo_url": ""}],
-                "experience": [{"company": "", "role": "", "location": "", "start_date": "", "end_date": "", "responsibilities": "", "achievements": "", "technologies": ""}],
-                "certifications": [{"name": "", "organization": "", "date": "", "credential_url": ""}],
-                "achievements": [""],
-                "target_job": "",
-            }
-            st.session_state.validation_errors = []
-            st.session_state.validation_success = False
-            st.rerun()
-
-    st.markdown("---")
-    st.subheader("Claude AI Connection")
-
-    # Demo Mode toggle
-    demo_mode = st.toggle("🧪 Demo / Mock Mode", value=False, help="Enable to test the entire application without calling the paid Claude API.")
-    st.session_state.demo_mode = demo_mode
-
-    # API key detection
-    configured_key = get_api_key()
-    if configured_key:
-        st.success("✅ Claude API Key active")
-    else:
-        st.info("ℹ️ No `.env` key detected")
-
-    with st.expander("🔑 Configure API Key", expanded=not bool(configured_key)):
-        user_key = st.text_input(
-            "Anthropic API Key",
-            type="password",
-            placeholder="sk-ant-api03-...",
-            help="Your API key stays in your local browser session and is never logged or exposed.",
-            value=st.session_state.get("custom_api_key", ""),
-        )
-        if user_key:
-            st.session_state.custom_api_key = user_key
-            st.success("Custom key set for this session!")
-        st.caption("You can also add `ANTHROPIC_API_KEY=your_key` to a `.env` file in the project folder.")
-
-# ==========================================
-# 5. PAGE CONTENT ROUTING
-# ==========================================
-if selected_page == "🏠 Home & Overview":
+    # Privacy statement badge
     st.markdown(
-        """
-        <div class="hero-container">
-            <span class="badge">🚀 Production Ready Architecture</span>
-            <div class="hero-title">AI Resume Builder</div>
-            <div class="hero-subtitle">
-                Create an ATS-friendly resume tailored to your dream job with AI.
-            </div>
-            <p style="color: #cbd5e1; font-size: 0.95rem; margin: 0; max-width: 750px;">
-                Built to transform your verified skills, projects, and career milestones
-                into crisp, recruiter-approved bullet points — with <b>zero hallucinated qualifications</b>.
-            </p>
-        </div>
-        """,
+        f"<div class='privacy-badge'>{config.PRIVACY_STATEMENT}</div>",
         unsafe_allow_html=True,
     )
 
-    st.subheader("How It Works")
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.markdown("**1. Your Profile**<br>Enter your education, verified skills, projects, and experience.", unsafe_allow_html=True)
-    with col2:
-        st.markdown("**2. Target Job**<br>Paste your target job posting to align keywords.", unsafe_allow_html=True)
-    with col3:
-        st.markdown("**3. Claude AI**<br>Polishes phrasing with action verbs without inventing achievements.", unsafe_allow_html=True)
-    with col4:
-        st.markdown("**4. ATS Scoring**<br>Inspect ATS match score, keyword gaps, and download DOCX.", unsafe_allow_html=True)
+    # Ollama Health Check
+    is_online, status_msg = ai_client.is_available()
+    if is_online:
+        st.markdown(
+            f"<div class='status-pill status-online'>● Ollama Online</div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            f"<div class='status-pill status-offline'>● Ollama Offline</div>",
+            unsafe_allow_html=True,
+        )
+        st.warning(status_msg)
+
+    # Local Model Selection
+    installed_models = ai_client.list_models() if is_online else []
+    if installed_models:
+        model_options = list(set(installed_models + [st.session_state.ollama_model]))
+        selected_m = st.selectbox(
+            "Local Model",
+            options=model_options,
+            index=model_options.index(st.session_state.ollama_model)
+            if st.session_state.ollama_model in model_options else 0,
+            help="Models run completely locally on your computer via Ollama.",
+        )
+        if selected_m != st.session_state.ollama_model:
+            st.session_state.ollama_model = selected_m
+            ai_client.model = selected_m
+            st.rerun()
+    else:
+        st.text_input(
+            "Model Name",
+            value=st.session_state.ollama_model,
+            key="model_name_input",
+            help="Default model e.g. llama3.2. Run 'ollama pull llama3.2' in terminal to install.",
+        )
+
+    st.divider()
+
+    # Template Selector
+    st.subheader("🎨 Resume Template")
+    selected_tpl = st.selectbox(
+        "Choose Design",
+        options=RESUME_TEMPLATES,
+        index=RESUME_TEMPLATES.index(st.session_state.resume_data.selected_template)
+        if st.session_state.resume_data.selected_template in RESUME_TEMPLATES else 0,
+    )
+    if selected_tpl != st.session_state.resume_data.selected_template:
+        st.session_state.resume_data.selected_template = selected_tpl
+
+    # Template description
+    tpl_desc = TEMPLATE_CONFIGS[st.session_state.resume_data.selected_template]["description"]
+    st.caption(f"ℹ️ {tpl_desc}")
+
+    st.divider()
+
+    # Section Visibility Selector
+    st.subheader("📑 Visible Sections")
+    active_sections = st.multiselect(
+        "Toggle Sections",
+        options=config.AVAILABLE_SECTIONS,
+        default=st.session_state.resume_data.enabled_sections,
+    )
+    st.session_state.resume_data.enabled_sections = active_sections
+
+    st.divider()
+
+    # Quick Action Buttons
+    col_demo, col_reset = st.columns(2)
+    with col_demo:
+        if st.button("📋 Load Demo", use_container_width=True, help="Load a pre-filled student resume to test instantly"):
+            load_sample()
+            st.rerun()
+    with col_reset:
+        if st.button("🧹 Clear Form", use_container_width=True, help="Reset all fields"):
+            clear_form()
+            st.rerun()
+
+    st.markdown("---")
+    st.caption("Version 1.0.0 • Local AI Engine")
 
 
-elif selected_page == "📝 Resume Builder":
-    st.title("📝 Resume Builder")
-    st.caption("Fill in your details below. You can also click **'✨ Load Sample'** in the sidebar to test instantly.")
+# --- Main Content Header ---
+st.title(config.APP_TITLE)
+st.markdown(f"**{config.APP_SUBTITLE}**")
 
-    # Validation Feedback Alerts
-    if st.session_state.validation_errors:
-        st.error("⚠️ Please address the following issues:")
-        for err in st.session_state.validation_errors:
-            st.markdown(f"- {err}")
-    elif st.session_state.validation_success:
-        st.success("✅ Profile data is valid and saved in session!")
-
-    # Tabs for structured input
-    tab_personal, tab_edu, tab_skills, tab_proj, tab_exp, tab_certs, tab_job = st.tabs(
-        [
-            "👤 Personal Info",
-            "🎓 Education",
-            "⚡ Skills",
-            "💻 Projects",
-            "💼 Experience",
-            "🏆 Certs & Awards",
-            "🎯 Target Job",
-        ]
+# Top Banner if Ollama is Offline
+if not is_online:
+    st.error(
+        "🚨 **Ollama is not running locally!**\n\n"
+        "To enable AI summary and bullet improvement features:\n"
+        "1. Open your terminal or PowerShell.\n"
+        "2. Run: `ollama serve` (or open the Ollama desktop app).\n"
+        "3. Verify your model is pulled: `ollama pull llama3.2`.\n\n"
+        "*Note: You can still manually enter resume info, live preview, and export to PDF/DOCX without Ollama!*"
     )
 
-    resume_data = st.session_state.resume_data
 
-    # -------------------------------------------------------------
-    # TAB 1: PERSONAL INFORMATION
-    # -------------------------------------------------------------
-    with tab_personal:
-        st.subheader("Personal Information")
-        p = resume_data["personal_info"]
+# --- Tabs Organization ---
+tabs = st.tabs([
+    "👤 Contact",
+    "📝 Summary",
+    "🎓 Education",
+    "⚡ Skills",
+    "💼 Experience",
+    "🚀 Projects",
+    "📜 Certs & Honors",
+    "🎯 Job Match & ATS",
+    "👁️ Live Preview & Export",
+])
 
-        col1, col2 = st.columns(2)
-        with col1:
-            p["full_name"] = st.text_input("Full Name *", value=p.get("full_name", ""), placeholder="e.g. Alex Johnson")
-            p["email"] = st.text_input("Email Address *", value=p.get("email", ""), placeholder="e.g. alex@example.com")
-            if p["email"] and not validate_email(p["email"]):
-                st.caption("⚠️ Invalid email format")
-            p["location"] = st.text_input("Location", value=p.get("location", ""), placeholder="e.g. San Francisco, CA")
-            p["linkedin"] = st.text_input("LinkedIn Profile URL", value=p.get("linkedin", ""), placeholder="https://linkedin.com/in/...")
-            if p["linkedin"] and not validate_url(p["linkedin"]):
-                st.caption("⚠️ Invalid URL format")
+res = st.session_state.resume_data
 
-        with col2:
-            p["professional_title"] = st.text_input("Target / Professional Title", value=p.get("professional_title", ""), placeholder="e.g. Software Engineer | Full Stack Developer")
-            p["phone"] = st.text_input("Phone Number", value=p.get("phone", ""), placeholder="e.g. +1 (555) 019-2834")
-            p["github"] = st.text_input("GitHub Profile URL", value=p.get("github", ""), placeholder="https://github.com/...")
-            if p["github"] and not validate_url(p["github"]):
-                st.caption("⚠️ Invalid URL format")
-            p["portfolio"] = st.text_input("Portfolio / Website URL", value=p.get("portfolio", ""), placeholder="https://myportfolio.dev")
-            if p["portfolio"] and not validate_url(p["portfolio"]):
-                st.caption("⚠️ Invalid URL format")
 
-        p["summary"] = st.text_area(
-            "Professional Summary (Optional - Claude can optimize this for you)",
-            value=p.get("summary", ""),
-            height=100,
-            placeholder="Brief overview of your professional background, core technical focus, and career goals.",
+# ==========================================
+# TAB 1: Contact / Personal Information
+# ==========================================
+with tabs[0]:
+    st.subheader("Personal & Contact Details")
+    st.caption("Recruiters and ATS systems require standard contact channels.")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        res.personal_info.full_name = st.text_input(
+            "Full Name *",
+            value=res.personal_info.full_name,
+            placeholder="e.g. Alex Chen",
         )
-
-    # -------------------------------------------------------------
-    # TAB 2: EDUCATION
-    # -------------------------------------------------------------
-    with tab_edu:
-        st.subheader("Education History")
-        st.caption("Add your degree(s), institutions, and academic milestones.")
-
-        for i, edu in enumerate(resume_data["education"]):
-            with st.expander(f"🎓 Education #{i+1}: {edu.get('degree', '')} {edu.get('institution', '') or 'New Entry'}", expanded=True):
-                col_e1, col_e2 = st.columns(2)
-                with col_e1:
-                    edu["institution"] = st.text_input(f"Institution / University #{i+1}", value=edu.get("institution", ""), key=f"edu_inst_{i}", placeholder="e.g. UC Berkeley")
-                    edu["degree"] = st.text_input(f"Degree #{i+1}", value=edu.get("degree", ""), key=f"edu_deg_{i}", placeholder="e.g. Bachelor of Science")
-                    edu["field_of_study"] = st.text_input(f"Field of Study #{i+1}", value=edu.get("field_of_study", ""), key=f"edu_field_{i}", placeholder="e.g. Computer Science")
-                with col_e2:
-                    edu["gpa"] = st.text_input(f"CGPA / GPA #{i+1}", value=edu.get("gpa", ""), key=f"edu_gpa_{i}", placeholder="e.g. 3.8 / 4.0")
-                    col_y1, col_y2 = st.columns(2)
-                    with col_y1:
-                        edu["start_year"] = st.text_input(f"Start Year #{i+1}", value=edu.get("start_year", ""), key=f"edu_start_{i}", placeholder="2020")
-                    with col_y2:
-                        edu["end_year"] = st.text_input(f"Graduation Year #{i+1}", value=edu.get("end_year", ""), key=f"edu_end_{i}", placeholder="2024")
-
-                edu["coursework"] = st.text_input(
-                    f"Relevant Coursework #{i+1}",
-                    value=edu.get("coursework", ""),
-                    key=f"edu_course_{i}",
-                    placeholder="e.g. Data Structures, Algorithms, Distributed Systems, Machine Learning",
-                )
-                edu["achievements"] = st.text_input(
-                    f"Academic Honors / Awards #{i+1}",
-                    value=edu.get("achievements", ""),
-                    key=f"edu_honors_{i}",
-                    placeholder="e.g. Dean's Honors List, Magna Cum Laude",
-                )
-
-                if len(resume_data["education"]) > 1:
-                    if st.button(f"🗑️ Remove Education #{i+1}", key=f"del_edu_{i}"):
-                        resume_data["education"].pop(i)
-                        st.rerun()
-
-        if st.button("➕ Add Another Education", key="add_edu_btn"):
-            resume_data["education"].append(
-                {
-                    "institution": "",
-                    "degree": "",
-                    "field_of_study": "",
-                    "start_year": "",
-                    "end_year": "",
-                    "gpa": "",
-                    "coursework": "",
-                    "achievements": "",
-                }
-            )
-            st.rerun()
-
-    # -------------------------------------------------------------
-    # TAB 3: SKILLS
-    # -------------------------------------------------------------
-    with tab_skills:
-        st.subheader("Technical & Soft Skills")
-        st.caption("Provide comma-separated skills that you genuinely possess. The AI will never invent skills.")
-
-        s = resume_data["skills"]
-        s["programming_languages"] = st.text_input(
-            "Programming Languages",
-            value=s.get("programming_languages", ""),
-            placeholder="e.g. Python, Java, TypeScript, C++, SQL",
+        res.personal_info.email = st.text_input(
+            "Professional Email *",
+            value=res.personal_info.email,
+            placeholder="alex.chen@example.com",
         )
-        s["frameworks"] = st.text_input(
-            "Frameworks & Libraries",
-            value=s.get("frameworks", ""),
-            placeholder="e.g. Streamlit, React, FastAPI, Node.js, PyTorch, Pandas",
+        if res.personal_info.email:
+            valid, msg = validate_email(res.personal_info.email)
+            if not valid:
+                st.caption(f":red[⚠️ {msg}]")
+
+        res.personal_info.phone = st.text_input(
+            "Phone Number *",
+            value=res.personal_info.phone,
+            placeholder="+1 (555) 019-2834",
         )
-        s["databases"] = st.text_input(
-            "Databases & Storage",
-            value=s.get("databases", ""),
-            placeholder="e.g. PostgreSQL, MongoDB, Redis, MySQL",
+        if res.personal_info.phone:
+            valid, msg = validate_phone(res.personal_info.phone)
+            if not valid:
+                st.caption(f":orange[⚠️ {msg}]")
+
+    with col2:
+        res.personal_info.location = st.text_input(
+            "Location (City, State / Country)",
+            value=res.personal_info.location,
+            placeholder="San Jose, CA",
         )
-        s["tools"] = st.text_input(
-            "Developer Tools & Cloud",
-            value=s.get("tools", ""),
-            placeholder="e.g. Git, GitHub Actions, Docker, AWS, VS Code, Postman",
+        res.personal_info.linkedin_url = st.text_input(
+            "LinkedIn Profile URL",
+            value=res.personal_info.linkedin_url,
+            placeholder="https://linkedin.com/in/alexchen",
         )
-        s["soft_skills"] = st.text_input(
-            "Core Strengths & Soft Skills",
-            value=s.get("soft_skills", ""),
-            placeholder="e.g. Problem Solving, Cross-functional Collaboration, Agile Methodology",
-        )
-
-    # -------------------------------------------------------------
-    # TAB 4: PROJECTS
-    # -------------------------------------------------------------
-    with tab_proj:
-        st.subheader("Technical Projects")
-        st.caption("Describe your projects naturally. Claude will turn your descriptions into high-impact bullet points.")
-
-        for j, proj in enumerate(resume_data["projects"]):
-            with st.expander(f"💻 Project #{j+1}: {proj.get('name', '') or 'New Project'}", expanded=True):
-                col_p1, col_p2 = st.columns(2)
-                with col_p1:
-                    proj["name"] = st.text_input(f"Project Name #{j+1}", value=proj.get("name", ""), key=f"proj_name_{j}", placeholder="e.g. AI Resume Builder")
-                    proj["technologies"] = st.text_input(f"Technologies Used #{j+1}", value=proj.get("technologies", ""), key=f"proj_tech_{j}", placeholder="e.g. Python, Streamlit, Claude API")
-                with col_p2:
-                    proj["github_url"] = st.text_input(f"GitHub Repository URL #{j+1}", value=proj.get("github_url", ""), key=f"proj_gh_{j}", placeholder="https://github.com/...")
-                    proj["demo_url"] = st.text_input(f"Live Demo URL #{j+1}", value=proj.get("demo_url", ""), key=f"proj_demo_{j}", placeholder="https://...")
-
-                proj["description"] = st.text_area(
-                    f"What does this project do? #{j+1}",
-                    value=proj.get("description", ""),
-                    key=f"proj_desc_{j}",
-                    height=80,
-                    placeholder="e.g. Built an interactive web app that helps job seekers tailor their resumes to ATS requirements.",
-                )
-                proj["responsibilities"] = st.text_input(
-                    f"What were your specific contributions? #{j+1}",
-                    value=proj.get("responsibilities", ""),
-                    key=f"proj_resp_{j}",
-                    placeholder="e.g. Designed the state management, created modular DOCX export, and integrated Claude API.",
-                )
-                proj["results"] = st.text_input(
-                    f"Measurable Results / Impact (Only if real) #{j+1}",
-                    value=proj.get("results", ""),
-                    key=f"proj_res_{j}",
-                    placeholder="e.g. Used by 100+ classmates; reduced resume formatting time by 80%.",
-                )
-
-                if len(resume_data["projects"]) > 1:
-                    if st.button(f"🗑️ Remove Project #{j+1}", key=f"del_proj_{j}"):
-                        resume_data["projects"].pop(j)
-                        st.rerun()
-
-        if st.button("➕ Add Another Project", key="add_proj_btn"):
-            resume_data["projects"].append(
-                {
-                    "name": "",
-                    "description": "",
-                    "technologies": "",
-                    "responsibilities": "",
-                    "results": "",
-                    "github_url": "",
-                    "demo_url": "",
-                }
-            )
-            st.rerun()
-
-    # -------------------------------------------------------------
-    # TAB 5: EXPERIENCE & INTERNSHIPS
-    # -------------------------------------------------------------
-    with tab_exp:
-        st.subheader("Work & Internship Experience")
-        st.caption("Include relevant internships, part-time, or full-time roles.")
-
-        for k, exp in enumerate(resume_data["experience"]):
-            with st.expander(f"💼 Experience #{k+1}: {exp.get('role', '')} at {exp.get('company', '') or 'New Role'}", expanded=True):
-                col_x1, col_x2 = st.columns(2)
-                with col_x1:
-                    exp["company"] = st.text_input(f"Company / Organization #{k+1}", value=exp.get("company", ""), key=f"exp_comp_{k}", placeholder="e.g. TechCorp")
-                    exp["role"] = st.text_input(f"Job Role / Title #{k+1}", value=exp.get("role", ""), key=f"exp_role_{k}", placeholder="e.g. Software Engineer Intern")
-                    exp["location"] = st.text_input(f"Location #{k+1}", value=exp.get("location", ""), key=f"exp_loc_{k}", placeholder="e.g. Remote / New York, NY")
-                with col_x2:
-                    col_d1, col_d2 = st.columns(2)
-                    with col_d1:
-                        exp["start_date"] = st.text_input(f"Start Date #{k+1}", value=exp.get("start_date", ""), key=f"exp_sd_{k}", placeholder="e.g. Jun 2023")
-                    with col_d2:
-                        exp["end_date"] = st.text_input(f"End Date #{k+1}", value=exp.get("end_date", ""), key=f"exp_ed_{k}", placeholder="e.g. Present / Sep 2023")
-                    exp["technologies"] = st.text_input(f"Technologies Used #{k+1}", value=exp.get("technologies", ""), key=f"exp_tech_{k}", placeholder="e.g. Python, SQL, Git, AWS")
-
-                exp["responsibilities"] = st.text_area(
-                    f"Responsibilities & Day-to-day work #{k+1}",
-                    value=exp.get("responsibilities", ""),
-                    key=f"exp_resp_{k}",
-                    height=80,
-                    placeholder="e.g. Developed REST APIs for internal analytics dashboard. Collaborated in daily standups.",
-                )
-                exp["achievements"] = st.text_input(
-                    f"Key Achievements #{k+1}",
-                    value=exp.get("achievements", ""),
-                    key=f"exp_ach_{k}",
-                    placeholder="e.g. Optimized database queries to reduce endpoint response time by 30%.",
-                )
-
-                if len(resume_data["experience"]) > 1:
-                    if st.button(f"🗑️ Remove Experience #{k+1}", key=f"del_exp_{k}"):
-                        resume_data["experience"].pop(k)
-                        st.rerun()
-
-        if st.button("➕ Add Another Experience", key="add_exp_btn"):
-            resume_data["experience"].append(
-                {
-                    "company": "",
-                    "role": "",
-                    "location": "",
-                    "start_date": "",
-                    "end_date": "",
-                    "responsibilities": "",
-                    "achievements": "",
-                    "technologies": "",
-                }
-            )
-            st.rerun()
-
-    # -------------------------------------------------------------
-    # TAB 6: CERTIFICATIONS & ACHIEVEMENTS
-    # -------------------------------------------------------------
-    with tab_certs:
-        st.subheader("Certifications")
-        for m, cert in enumerate(resume_data["certifications"]):
-            col_c1, col_c2 = st.columns(2)
-            with col_c1:
-                cert["name"] = st.text_input(f"Certification Name #{m+1}", value=cert.get("name", ""), key=f"cert_nm_{m}", placeholder="e.g. AWS Certified Developer")
-                cert["organization"] = st.text_input(f"Issuing Organization #{m+1}", value=cert.get("organization", ""), key=f"cert_org_{m}", placeholder="e.g. Amazon Web Services")
-            with col_c2:
-                cert["date"] = st.text_input(f"Issue Year / Date #{m+1}", value=cert.get("date", ""), key=f"cert_dt_{m}", placeholder="e.g. 2023")
-                cert["credential_url"] = st.text_input(f"Credential URL #{m+1}", value=cert.get("credential_url", ""), key=f"cert_url_{m}", placeholder="https://...")
-
-        if st.button("➕ Add Certification", key="add_cert_btn"):
-            resume_data["certifications"].append({"name": "", "organization": "", "date": "", "credential_url": ""})
-            st.rerun()
-
-        st.markdown("---")
-        st.subheader("Honors, Awards & Achievements")
-        st.caption("Hackathons, competitions, awards, leadership, or open-source contributions.")
-
-        for n, ach in enumerate(resume_data["achievements"]):
-            resume_data["achievements"][n] = st.text_input(
-                f"Achievement #{n+1}",
-                value=ach,
-                key=f"ach_item_{n}",
-                placeholder="e.g. 1st Place at National Hackathon (out of 200 teams)",
-            )
-
-        if st.button("➕ Add Achievement", key="add_ach_btn"):
-            resume_data["achievements"].append("")
-            st.rerun()
-
-    # -------------------------------------------------------------
-    # TAB 7: TARGET JOB DESCRIPTION
-    # -------------------------------------------------------------
-    with tab_job:
-        st.subheader("Target Job Description")
-        st.caption("Paste the full job posting here. Claude will use this to align your keywords, detect missing skills, and calculate ATS compatibility.")
-
-        resume_data["target_job"] = st.text_area(
-            "Job Description (Optional but recommended)",
-            value=resume_data.get("target_job", ""),
-            height=220,
-            placeholder="Paste responsibilities, required qualifications, and desired technical skills from the job description...",
-        )
-
-    # -------------------------------------------------------------
-    # SAVE & VALIDATE PROFILE BUTTON
-    # -------------------------------------------------------------
-    st.markdown("---")
-    col_save, col_gen, col_info = st.columns([1, 1.2, 1.5])
-
-    # Helper function to prepare payload
-    def prepare_payload():
-        packaged_data = dict(resume_data)
-        packaged_skills = {}
-        for category, raw_str in resume_data["skills"].items():
-            if isinstance(raw_str, str):
-                packaged_skills[category] = [s.strip() for s in raw_str.split(",") if s.strip()]
+        if res.personal_info.linkedin_url:
+            valid, val = validate_url(res.personal_info.linkedin_url)
+            if not valid:
+                st.caption(f":orange[⚠️ {val}]")
             else:
-                packaged_skills[category] = raw_str
-        packaged_data["skills"] = packaged_skills
-        return packaged_data
+                res.personal_info.linkedin_url = val
 
-    with col_save:
-        if st.button("💾 Save Profile", use_container_width=True):
-            packaged_data = prepare_payload()
-            is_valid, errors = validate_profile(packaged_data)
-            st.session_state.validation_errors = errors
-            st.session_state.validation_success = is_valid
+        res.personal_info.github_url = st.text_input(
+            "GitHub Profile URL",
+            value=res.personal_info.github_url,
+            placeholder="https://github.com/alexchen",
+        )
+        if res.personal_info.github_url:
+            valid, val = validate_url(res.personal_info.github_url)
+            if not valid:
+                st.caption(f":orange[⚠️ {val}]")
+            else:
+                res.personal_info.github_url = val
 
-            if is_valid:
-                st.session_state.resume_data = resume_data
-                st.toast("Profile data validated and saved!", icon="✅")
-            st.rerun()
+        res.personal_info.portfolio_url = st.text_input(
+            "Portfolio / Personal Website URL",
+            value=res.personal_info.portfolio_url,
+            placeholder="https://alexchen.dev",
+        )
+        if res.personal_info.portfolio_url:
+            valid, val = validate_url(res.personal_info.portfolio_url)
+            if not valid:
+                st.caption(f":orange[⚠️ {val}]")
+            else:
+                res.personal_info.portfolio_url = val
 
-    with col_gen:
-        if st.button("🚀 Generate Resume with AI", type="primary", use_container_width=True):
-            packaged_data = prepare_payload()
-            is_valid, errors = validate_profile(packaged_data)
-            st.session_state.validation_errors = errors
-            st.session_state.validation_success = is_valid
 
-            if not is_valid:
-                st.rerun()
+# ==========================================
+# TAB 2: Professional Summary
+# ==========================================
+with tabs[1]:
+    st.subheader("Professional Summary")
+    st.caption("A punchy 2-4 sentence introduction highlighting your academic core and engineering capabilities.")
 
-            # Execute Generation using the unified pipeline
-            with st.spinner("🤖 Claude AI is crafting your ATS-optimized resume..."):
-                active_key = st.session_state.get("custom_api_key") or get_api_key()
-                demo_mode = st.session_state.get("demo_mode", False)
-
-                success, result, msg = generate_resume_pipeline(
-                    raw_profile=packaged_data,
-                    target_job=packaged_data.get("target_job", ""),
-                    custom_api_key=active_key,
-                    demo_mode=demo_mode,
-                )
-
-                if success and result:
-                    st.session_state.generated_resume = result
-
-                    # Automatically run ATS analysis against target job
-                    _, ats_res, _ = analyze_ats_compatibility(
-                        resume_data=result,
-                        target_job=packaged_data.get("target_job", ""),
-                        custom_api_key=active_key,
-                        demo_mode=demo_mode,
-                    )
-                    st.session_state.ats_analysis = ats_res
-
-                    st.toast("Resume & ATS Analysis generated successfully!", icon="✅")
-                    st.success(f"✨ {msg} Navigate to **'📊 AI & ATS Analysis'** or **'📄 Preview & Export'**!")
-                else:
-                    st.error(msg)
+    col_btn, col_info = st.columns([1, 3])
+    with col_btn:
+        if st.button("✨ Generate with AI", disabled=not is_online, help="Generate a truthful summary using local Ollama"):
+            with st.spinner("AI is synthesizing your career details locally..."):
+                try:
+                    generated_summary = generate_professional_summary(res, ai_client)
+                    res.summary = generated_summary
+                    st.success("Summary generated!")
+                except Exception as e:
+                    st.error(f"Generation error: {str(e)}")
 
     with col_info:
-        st.caption("AI rewrites project & experience bullets into impact-driven ATS statements without fabricating qualifications.")
-
-
-elif selected_page == "📊 AI & ATS Analysis":
-    st.header("📊 AI & ATS Compatibility Analysis")
-    st.caption("Evaluate your resume against target job requirements and identify keyword gaps.")
-
-    # Re-run or trigger analysis button
-    packaged_profile = dict(st.session_state.resume_data)
-    target_job_text = packaged_profile.get("target_job", "")
-
-    col_btn, col_txt = st.columns([1, 2.5])
-    with col_btn:
-        if st.button("🔄 Run / Refresh ATS Analysis", type="primary", use_container_width=True):
-            with st.spinner("Analyzing profile against target job description..."):
-                active_key = st.session_state.get("custom_api_key") or get_api_key()
-                demo_mode = st.session_state.get("demo_mode", False)
-                source_data = st.session_state.get("generated_resume") or packaged_profile
-
-                success, ats_res, msg = analyze_ats_compatibility(
-                    resume_data=source_data,
-                    target_job=target_job_text,
-                    custom_api_key=active_key,
-                    demo_mode=demo_mode,
-                )
-                if success and ats_res:
-                    st.session_state.ats_analysis = ats_res
-                    st.toast("ATS analysis updated!", icon="🎯")
-                st.rerun()
-
-    with col_txt:
-        if target_job_text.strip():
-            st.caption(f"🎯 Target Job Description detected ({len(target_job_text.split())} words).")
+        if not is_online:
+            st.info("Start Ollama locally to enable 1-click AI summary generation.")
         else:
-            st.caption("ℹ️ No target job description provided. Analysis is evaluating general ATS industry standards.")
+            st.caption("The AI strictly synthesizes your education, skills, and projects without inventing fake metrics.")
 
-    ats_data = st.session_state.get("ats_analysis")
+    res.summary = st.text_area(
+        "Edit or write your professional summary directly:",
+        value=res.summary,
+        height=140,
+        placeholder="e.g. Motivated Computer Science undergraduate with hands-on experience in Python automation and full-stack web development...",
+    )
 
-    if not ats_data:
-        st.info("👋 Click **'🔄 Run / Refresh ATS Analysis'** above or generate your resume to see your comprehensive ATS score and keyword gap analysis.")
-    else:
-        score = ats_data.get("overall_score", 75)
 
-        # 1. OVERALL SCORE CARD
-        st.markdown("---")
-        col_score, col_verdict = st.columns([1, 2])
+# ==========================================
+# TAB 3: Education
+# ==========================================
+with tabs[2]:
+    st.subheader("Education History")
+    st.caption("List university, degree, graduation timelines, GPA, and coursework.")
 
-        with col_score:
-            if score >= 80:
-                badge_color = "#10b981"  # Emerald Green
-                badge_text = "✨ High Compatibility (80-100)"
-            elif score >= 60:
-                badge_color = "#f59e0b"  # Amber
-                badge_text = "⚠️ Moderate Match (60-79)"
-            else:
-                badge_color = "#ef4444"  # Red
-                badge_text = "🚨 Low Match (<60)"
+    if not res.education:
+        res.education.append(EducationEntry())
 
-            st.metric("Estimated ATS Score", f"{score} / 100")
-            st.markdown(
-                f"""
-                <div style='background-color: {badge_color}20; color: {badge_color};
-                            border: 1px solid {badge_color}50; padding: 6px 12px;
-                            border-radius: 9999px; display: inline-block; font-weight: 600; font-size: 0.85rem;'>
-                    {badge_text}
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-        with col_verdict:
-            st.markdown("### Recruiter Assessment")
-            st.write(ats_data.get("summary_verdict", "Strong candidate profile."))
-            st.caption("*Note: This is an estimated compatibility score based on keyword overlap, structural completeness, and skill relevance. It is not an official score from a specific ATS vendor.*")
-
-        # 2. SCORE BREAKDOWN
-        st.markdown("---")
-        st.subheader("Score Breakdown")
-        breakdown = ats_data.get("score_breakdown", {})
-
-        cols = st.columns(len(breakdown) if breakdown else 1)
-        for idx, (cat_key, cat_data) in enumerate(breakdown.items()):
-            with cols[idx]:
-                c_score = cat_data.get("score", 0)
-                c_max = cat_data.get("max_score", 20)
-                label = cat_data.get("label", cat_key.title())
-                ratio = c_score / c_max if c_max else 0
-                st.metric(label, f"{c_score} / {c_max}")
-                st.progress(ratio)
-
-        # 3. KEYWORD ANALYSIS (MATCHED VS MISSING)
-        st.markdown("---")
-        st.subheader("Keyword & Skills Alignment")
-
-        col_matched, col_missing = st.columns(2)
-
-        with col_matched:
-            st.markdown("#### ✅ Matched Keywords & Skills")
-            matched = ats_data.get("matched_keywords", [])
-            if matched:
-                chips_html = " ".join([
-                    f"<span style='display: inline-block; background-color: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); padding: 4px 10px; border-radius: 6px; margin: 3px; font-weight: 500; font-size: 0.85rem;'>✓ {kw}</span>"
-                    for kw in matched
-                ])
-                st.markdown(chips_html, unsafe_allow_html=True)
-            else:
-                st.caption("No specific technical keywords matched yet.")
-
-        with col_missing:
-            st.markdown("#### ⚠️ Missing Keywords (Requested in Job)")
-            missing = ats_data.get("missing_keywords", [])
-            if missing:
-                chips_html = " ".join([
-                    f"<span style='display: inline-block; background-color: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); padding: 4px 10px; border-radius: 6px; margin: 3px; font-weight: 500; font-size: 0.85rem;'>+ {kw}</span>"
-                    for kw in missing
-                ])
-                st.markdown(chips_html, unsafe_allow_html=True)
-                st.markdown(
-                    """
-                    <div style='font-size: 0.82rem; color: #64748b; margin-top: 8px;'>
-                    💡 <b>Important:</b> If a skill is missing from your profile, <b>do NOT invent it</b>. Consider adding it only if you genuinely have hands-on experience with it.
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
+    to_remove_edu = None
+    for idx, edu in enumerate(res.education):
+        with st.expander(f"🎓 Education #{idx + 1}: {edu.institution or 'New Entry'}", expanded=True):
+            ec1, ec2 = st.columns(2)
+            with ec1:
+                edu.institution = st.text_input("Institution / University", value=edu.institution, key=f"edu_inst_{idx}")
+                edu.degree = st.text_input("Degree (e.g. B.S., B.Tech, M.S.)", value=edu.degree, key=f"edu_deg_{idx}")
+                edu.field_of_study = st.text_input("Field of Study / Major", value=edu.field_of_study, key=f"edu_field_{idx}")
+            with ec2:
+                ed_c1, ed_c2 = st.columns(2)
+                with ed_c1:
+                    edu.start_year = st.text_input("Start Year", value=edu.start_year, key=f"edu_start_{idx}")
+                with ed_c2:
+                    edu.end_year = st.text_input("Graduation Year", value=edu.end_year, key=f"edu_end_{idx}")
+                edu.gpa = st.text_input("GPA / Score (Optional)", value=edu.gpa, key=f"edu_gpa_{idx}")
+                edu.relevant_coursework = st.text_input(
+                    "Relevant Coursework (Optional, comma-separated)",
+                    value=edu.relevant_coursework,
+                    key=f"edu_cw_{idx}",
                 )
-            else:
-                st.success("No critical keywords missing from the job description!")
 
-        # 4. ACTIONABLE IMPROVEMENT SUGGESTIONS
-        st.markdown("---")
-        st.subheader("Actionable Improvement Suggestions")
-        suggestions = ats_data.get("improvement_suggestions", [])
-        for sug in suggestions:
-            st.markdown(f"- 💡 {sug}")
+            if len(res.education) > 1:
+                if st.button("🗑️ Remove this education entry", key=f"del_edu_{idx}"):
+                    to_remove_edu = idx
+
+    if to_remove_edu is not None:
+        res.education.pop(to_remove_edu)
+        st.rerun()
+
+    if st.button("➕ Add Another Education Entry"):
+        res.education.append(EducationEntry())
+        st.rerun()
 
 
-elif selected_page == "📄 Preview & Export":
-    st.header("📄 Resume Preview & Export")
-    st.caption("Review your generated resume in multiple ATS-tailored formats.")
+# ==========================================
+# TAB 4: Skills
+# ==========================================
+with tabs[3]:
+    st.subheader("Categorized Technical Skills")
+    st.caption("Enter comma-separated items for each category. ATS parsers categorize skills into standardized taxonomies.")
 
-    gen_resume = st.session_state.get("generated_resume")
-    if not gen_resume:
-        st.warning("⚠️ No resume has been generated yet.")
-        st.info("Go to **'📝 Resume Builder'** and click **'🚀 Generate Resume with AI'** to create your ATS resume.")
-    else:
-        # Prepare download payloads
-        full_name_clean = gen_resume.get("personal_info", {}).get("full_name", "Resume").replace(" ", "_")
-        docx_buffer = build_docx_resume(gen_resume)
-        docx_bytes = docx_buffer.getvalue()
+    sk = res.skills
+    c_lang, c_frame = st.columns(2)
+    with c_lang:
+        raw_lang = st.text_input(
+            "Programming Languages",
+            value=", ".join(sk.programming_languages),
+            placeholder="Python, Java, C++, JavaScript, SQL",
+            help="Comma-separated list",
+        )
+        sk.programming_languages = split_lines_or_commas(raw_lang)
 
-        # Actions bar with all ATS download options
-        col_view1, col_view2, col_view3 = st.columns([1.5, 1.2, 1])
-        with col_view1:
-            st.download_button(
-                "📥 Download ATS DOCX (.docx)",
-                data=docx_bytes,
-                file_name=f"{full_name_clean}_Resume.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                type="primary",
-                use_container_width=True,
-                help="Recommended: Fully editable Microsoft Word document with perfect ATS formatting.",
+        raw_tools = st.text_input(
+            "Developer Tools & Platforms",
+            value=", ".join(sk.tools),
+            placeholder="Git, GitHub, Docker, VS Code, Postman, Linux",
+        )
+        sk.tools = split_lines_or_commas(raw_tools)
+
+        raw_db = st.text_input(
+            "Databases",
+            value=", ".join(sk.databases),
+            placeholder="PostgreSQL, MySQL, MongoDB, Redis, SQLite",
+        )
+        sk.databases = split_lines_or_commas(raw_db)
+
+    with c_frame:
+        raw_frame = st.text_input(
+            "Frameworks & Libraries",
+            value=", ".join(sk.frameworks),
+            placeholder="Streamlit, Flask, FastAPI, React, Node.js",
+        )
+        sk.frameworks = split_lines_or_commas(raw_frame)
+
+        raw_ai = st.text_input(
+            "AI / Machine Learning",
+            value=", ".join(sk.ai_ml),
+            placeholder="PyTorch, Scikit-learn, LangChain, Ollama, Pandas, NumPy",
+        )
+        sk.ai_ml = split_lines_or_commas(raw_ai)
+
+    # Custom categories
+    st.write("**Custom Categories (Optional)**")
+    to_remove_cat = None
+    for c_idx, cat in enumerate(sk.custom_categories):
+        cc1, cc2, cc3 = st.columns([2, 4, 1])
+        with cc1:
+            cat.category_name = st.text_input("Category Name", value=cat.category_name, key=f"cat_name_{c_idx}")
+        with cc2:
+            raw_c_skills = st.text_input("Skills (comma-separated)", value=", ".join(cat.skills), key=f"cat_skills_{c_idx}")
+            cat.skills = split_lines_or_commas(raw_c_skills)
+        with cc3:
+            st.write("")
+            st.write("")
+            if st.button("🗑️", key=f"del_cat_{c_idx}"):
+                to_remove_cat = c_idx
+
+    if to_remove_cat is not None:
+        sk.custom_categories.pop(to_remove_cat)
+        st.rerun()
+
+    if st.button("➕ Add Custom Skill Category"):
+        sk.custom_categories.append(SkillCategory(category_name="Cloud & DevOps", skills=[]))
+        st.rerun()
+
+
+# ==========================================
+# TAB 5: Experience
+# ==========================================
+with tabs[4]:
+    st.subheader("Professional Experience & Internships")
+    st.caption("Include roles, companies, key responsibilities, and use AI to enhance phrasing into impact-focused action verbs.")
+
+    if not res.experience:
+        res.experience.append(ExperienceEntry())
+
+    to_remove_exp = None
+    for idx, exp in enumerate(res.experience):
+        header_title = f"{exp.role or 'Role'} at {exp.company or 'Company'}"
+        with st.expander(f"💼 Experience #{idx + 1}: {header_title}", expanded=True):
+            xc1, xc2 = st.columns(2)
+            with xc1:
+                exp.company = st.text_input("Company / Organization", value=exp.company, key=f"exp_comp_{idx}")
+                exp.role = st.text_input("Job Title / Role", value=exp.role, key=f"exp_role_{idx}")
+                exp.location = st.text_input("Location (City, State / Remote)", value=exp.location, key=f"exp_loc_{idx}")
+            with xc2:
+                xd1, xd2 = st.columns(2)
+                with xd1:
+                    exp.start_date = st.text_input("Start Date", value=exp.start_date, key=f"exp_start_{idx}", placeholder="Jun 2024")
+                with xd2:
+                    if not exp.is_current:
+                        exp.end_date = st.text_input("End Date", value=exp.end_date, key=f"exp_end_{idx}", placeholder="Aug 2024")
+                    else:
+                        st.text_input("End Date", value="Present", disabled=True, key=f"exp_end_dis_{idx}")
+                exp.is_current = st.checkbox("Currently working here", value=exp.is_current, key=f"exp_curr_{idx}")
+
+            exp.responsibilities = st.text_area(
+                "Responsibilities & Tasks (What did you do?)",
+                value=exp.responsibilities,
+                key=f"exp_resp_{idx}",
+                placeholder="e.g. Developed REST APIs using FastAPI. Wrote unit tests. Handled database migrations.",
+                height=90,
             )
-        with col_view2:
-            st.download_button(
-                "🌐 Download HTML (Print to PDF)",
-                data=gen_resume.get("_rendered_html", ""),
-                file_name=f"{full_name_clean}_Resume.html",
-                mime="text/html",
-                use_container_width=True,
-                help="Opens in any browser. Press Ctrl + P to save as vector PDF.",
-            )
-        with col_view3:
-            st.download_button(
-                "📄 Download Plain Text (.txt)",
-                data=gen_resume.get("_rendered_text", ""),
-                file_name=f"{full_name_clean}_Resume.txt",
-                mime="text/plain",
-                use_container_width=True,
-                help="Unformatted plain text for direct ATS portal copy-pasting.",
+            exp.achievements = st.text_area(
+                "Measurable Results & Outcomes (Optional - do not invent numbers)",
+                value=exp.achievements,
+                key=f"exp_ach_{idx}",
+                placeholder="e.g. Reduced API latency by optimizing queries. Achieved 90% test coverage.",
+                height=70,
             )
 
-        # Multi-tab preview
-        prev_tab_doc, prev_tab_text, prev_tab_md, prev_tab_json = st.tabs(
-            [
-                "📑 ATS Document View",
-                "📋 Plain Text (Copy-Paste)",
-                "📝 Markdown View",
-                "⚙️ Structured JSON",
-            ]
+            # AI Improvement Action
+            btn_col, stat_col = st.columns([1, 3])
+            with btn_col:
+                if st.button(f"⚡ Improve with AI", key=f"btn_ai_exp_{idx}", disabled=not is_online):
+                    if not exp.responsibilities.strip():
+                        st.warning("Please enter your responsibilities first before improving.")
+                    else:
+                        with st.spinner("Refining bullet points with strong action verbs..."):
+                            try:
+                                bullets = improve_experience_bullets(exp, res.target_job, ai_client)
+                                exp.improved_bullets = bullets
+                                st.success("Bullets updated!")
+                            except Exception as e:
+                                st.error(f"Error: {str(e)}")
+
+            with stat_col:
+                if exp.improved_bullets:
+                    st.caption("✨ AI-improved bullet points active. You can edit them below:")
+
+            # Display editable bullet points
+            if exp.improved_bullets:
+                bullets_text = "\n".join(exp.improved_bullets)
+                new_bullets_text = st.text_area(
+                    "Edit ATS Bullet Points (one per line):",
+                    value=bullets_text,
+                    key=f"exp_bullets_edit_{idx}",
+                    height=120,
+                )
+                exp.improved_bullets = [b.strip() for b in new_bullets_text.split("\n") if b.strip()]
+
+            if len(res.experience) > 1:
+                if st.button("🗑️ Remove Experience", key=f"del_exp_{idx}"):
+                    to_remove_exp = idx
+
+    if to_remove_exp is not None:
+        res.experience.pop(to_remove_exp)
+        st.rerun()
+
+    if st.button("➕ Add Another Experience"):
+        res.experience.append(ExperienceEntry())
+        st.rerun()
+
+
+# ==========================================
+# TAB 6: Projects
+# ==========================================
+with tabs[5]:
+    st.subheader("Technical Projects")
+    st.caption("Showcase hands-on software development, open-source repositories, and system design experience.")
+
+    if not res.projects:
+        res.projects.append(ProjectEntry())
+
+    to_remove_proj = None
+    for idx, proj in enumerate(res.projects):
+        with st.expander(f"🚀 Project #{idx + 1}: {proj.name or 'New Project'}", expanded=True):
+            pc1, pc2 = st.columns(2)
+            with pc1:
+                proj.name = st.text_input("Project Name *", value=proj.name, key=f"pname_{idx}")
+                raw_tech = st.text_input(
+                    "Technologies Used (comma-separated)",
+                    value=", ".join(proj.technologies),
+                    key=f"ptech_{idx}",
+                    placeholder="Python, Streamlit, Ollama, PostgreSQL",
+                )
+                proj.technologies = split_lines_or_commas(raw_tech)
+
+            with pc2:
+                proj.github_url = st.text_input("GitHub Repository URL", value=proj.github_url, key=f"pgh_{idx}")
+                proj.demo_url = st.text_input("Live Demo URL", value=proj.demo_url, key=f"pdemo_{idx}")
+
+            proj.description = st.text_area(
+                "Project Overview (What does this system do?)",
+                value=proj.description,
+                key=f"pdesc_{idx}",
+                placeholder="e.g. A local semantic search engine that ingests PDF documents and answers questions...",
+                height=80,
+            )
+            proj.key_contributions = st.text_area(
+                "Your Specific Contributions & Architecture Decisions",
+                value=proj.key_contributions,
+                key=f"pcontrib_{idx}",
+                placeholder="e.g. Implemented the RAG vector indexing pipeline. Built the UI in Streamlit.",
+                height=80,
+            )
+
+            # AI Project Improvement
+            p_col_btn, p_col_stat = st.columns([1, 3])
+            with p_col_btn:
+                if st.button("⚡ Improve with AI", key=f"btn_ai_proj_{idx}", disabled=not is_online):
+                    if not proj.description.strip() and not proj.key_contributions.strip():
+                        st.warning("Please provide a project description or contributions first.")
+                    else:
+                        with st.spinner("Generating technical ATS bullets..."):
+                            try:
+                                bullets = improve_project_bullets(proj, res.target_job, ai_client)
+                                proj.improved_bullets = bullets
+                                st.success("Project bullets generated!")
+                            except Exception as e:
+                                st.error(f"Error: {str(e)}")
+
+            if proj.improved_bullets:
+                bullets_text = "\n".join(proj.improved_bullets)
+                new_proj_bullets = st.text_area(
+                    "Edit Project Bullets (one per line):",
+                    value=bullets_text,
+                    key=f"proj_bullets_edit_{idx}",
+                    height=100,
+                )
+                proj.improved_bullets = [b.strip() for b in new_proj_bullets.split("\n") if b.strip()]
+
+            if len(res.projects) > 1:
+                if st.button("🗑️ Remove Project", key=f"del_proj_{idx}"):
+                    to_remove_proj = idx
+
+    if to_remove_proj is not None:
+        res.projects.pop(to_remove_proj)
+        st.rerun()
+
+    if st.button("➕ Add Another Project"):
+        res.projects.append(ProjectEntry())
+        st.rerun()
+
+
+# ==========================================
+# TAB 7: Certifications & Honors
+# ==========================================
+with tabs[6]:
+    st.subheader("Certifications")
+    if not res.certifications:
+        res.certifications.append(CertificationEntry())
+
+    to_del_cert = None
+    for idx, cert in enumerate(res.certifications):
+        cc1, cc2, cc3, cc4, cc5 = st.columns([3, 3, 2, 3, 1])
+        with cc1:
+            cert.name = st.text_input("Certification Name", value=cert.name, key=f"cname_{idx}", placeholder="AWS Certified Cloud Practitioner")
+        with cc2:
+            cert.issuer = st.text_input("Issuer", value=cert.issuer, key=f"ciss_{idx}", placeholder="Amazon Web Services")
+        with cc3:
+            cert.issue_date = st.text_input("Date", value=cert.issue_date, key=f"cdate_{idx}", placeholder="Nov 2023")
+        with cc4:
+            cert.credential_url = st.text_input("URL (Optional)", value=cert.credential_url, key=f"curl_{idx}")
+        with cc5:
+            st.write("")
+            st.write("")
+            if st.button("🗑️", key=f"del_c_{idx}"):
+                to_del_cert = idx
+
+    if to_del_cert is not None:
+        res.certifications.pop(to_del_cert)
+        st.rerun()
+
+    if st.button("➕ Add Certification"):
+        res.certifications.append(CertificationEntry())
+        st.rerun()
+
+    st.divider()
+
+    st.subheader("Honors, Awards & Achievements")
+    if not res.achievements:
+        res.achievements.append(AchievementEntry())
+
+    to_del_ach = None
+    for idx, ach in enumerate(res.achievements):
+        ac1, ac2, ac3, ac4 = st.columns([3, 2, 2, 1])
+        with ac1:
+            ach.title = st.text_input("Award / Honor Title", value=ach.title, key=f"atitle_{idx}", placeholder="1st Place — Campus Hackathon")
+        with ac2:
+            ach.issuer_or_event = st.text_input("Event / Organizer", value=ach.issuer_or_event, key=f"aevent_{idx}", placeholder="ACM Student Chapter")
+        with ac3:
+            ach.date = st.text_input("Date", value=ach.date, key=f"adate_{idx}", placeholder="Mar 2024")
+        with ac4:
+            st.write("")
+            st.write("")
+            if st.button("🗑️", key=f"del_a_{idx}"):
+                to_del_ach = idx
+
+        ach.description = st.text_input(
+            "Brief Description (Optional)",
+            value=ach.description,
+            key=f"adesc_{idx}",
+            placeholder="Built an accessible campus navigation tool with a 4-person team.",
         )
 
-        with prev_tab_doc:
-            st.caption("💡 **Tip:** This layout strictly obeys standard ATS single-column formatting. You can print directly or save as PDF using your browser (Ctrl + P).")
-            # Render HTML inside an iframe component
-            html_content = gen_resume.get("_rendered_html", "")
-            st.components.v1.html(html_content, height=850, scrolling=True)
+    if to_del_ach is not None:
+        res.achievements.pop(to_del_ach)
+        st.rerun()
 
-        with prev_tab_text:
-            st.caption("Copy this plain-text representation directly into job application portals (Workday, Taleo, Greenhouse):")
-            st.text_area(
-                "ATS Plain Text Content",
-                value=gen_resume.get("_rendered_text", ""),
-                height=500,
-                help="Click inside and press Ctrl + A, Ctrl + C to copy.",
+    if st.button("➕ Add Achievement"):
+        res.achievements.append(AchievementEntry())
+        st.rerun()
+
+
+# ==========================================
+# TAB 8: Job Matcher & ATS Scoring
+# ==========================================
+with tabs[7]:
+    st.subheader("Target Job & ATS Optimizer")
+    st.caption("Paste a target job posting. The analyzer verifies keyword alignment, identifies gaps, and calculates a defensible ATS readiness score.")
+
+    c_tj1, c_tj2 = st.columns([1, 2])
+    with c_tj1:
+        res.target_job.title = st.text_input(
+            "Target Job Title",
+            value=res.target_job.title,
+            placeholder="e.g. Software Engineering Intern",
+        )
+    with c_tj2:
+        res.target_job.job_description = st.text_area(
+            "Target Job Posting / Description",
+            value=res.target_job.job_description,
+            height=120,
+            placeholder="Paste requirements, responsibilities, and tech stack from LinkedIn or job board...",
+        )
+
+    st.divider()
+
+    # Calculate ATS Score & Match
+    score_data = calculate_ats_score(res)
+    total_score = score_data["total_score"]
+    breakdown = score_data["breakdown"]
+
+    sc_col1, sc_col2 = st.columns([1, 2])
+    with sc_col1:
+        st.markdown(
+            f"""
+            <div class="ats-metric-card">
+                <div style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; opacity: 0.85;">Heuristic ATS Score</div>
+                <div class="ats-score-display">{total_score} <span style="font-size: 1.5rem; color: #94a3b8;">/ 100</span></div>
+                <div style="font-weight: 600; font-size: 1rem;">{score_data['rating']}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with sc_col2:
+        st.write("**Scoring Methodology Breakdown:**")
+        st.write(f"- 📋 **Section Completeness:** {breakdown['completeness']['score']} / 25 pts")
+        st.write(f"- ⚡ **Action Verbs & Impact:** {breakdown['action_verbs']['score']} / 25 pts")
+        st.write(f"- 🛠️ **Technical Skill Depth:** {breakdown['skills_depth']['score']} / 25 pts")
+        st.write(f"- 🔤 **Contact & Format Hygiene:** {breakdown['hygiene']['score']} / 25 pts")
+
+        # Display any actionable notes
+        all_notes = (
+            breakdown["completeness"]["notes"]
+            + breakdown["action_verbs"]["notes"]
+            + breakdown["skills_depth"]["notes"]
+            + breakdown["hygiene"]["notes"]
+        )
+        if all_notes:
+            st.info("💡 **Recommended Improvements:**\n" + "\n".join([f"- {note}" for note in all_notes]))
+
+    # Job Matching Analysis
+    if res.target_job.job_description.strip():
+        st.divider()
+        st.subheader("🎯 Job Description Keyword Match")
+
+        match_results = match_resume_with_job(res, res.target_job.job_description)
+        m_col1, m_col2 = st.columns(2)
+        with m_col1:
+            st.write(f"✅ **Matching Skills ({len(match_results['matching_skills'])}):**")
+            if match_results["matching_skills"]:
+                chips = " ".join([f"`{s}`" for s in match_results["matching_skills"]])
+                st.markdown(chips)
+            else:
+                st.caption("No direct keyword matches found yet.")
+
+        with m_col2:
+            st.write(f"🔍 **Missing / Not Evidenced in Resume ({len(match_results['missing_skills'])}):**")
+            if match_results["missing_skills"]:
+                chips = " ".join([f"`{s}`" for s in match_results["missing_skills"]])
+                st.markdown(chips)
+                st.caption("⚠️ *Rule: Only add these skills if you genuinely possess them! Never fabricate qualifications.*")
+            else:
+                st.caption("Great coverage! All detected core skills are represented.")
+
+    # Contextual AI Audit
+    if st.button("🤖 Run Deep AI Resume Audit", disabled=not is_online):
+        with st.spinner("Auditing resume against ATS standards using local LLM..."):
+            audit = analyze_resume_with_ai(res, ai_client)
+            st.write("### 🔍 AI Audit Findings")
+
+            ac1, ac2 = st.columns(2)
+            with ac1:
+                st.success("**Strengths Identified:**\n" + "\n".join([f"- {s}" for s in audit.get("strengths", [])]))
+                st.warning("**Areas for Improvement:**\n" + "\n".join([f"- {w}" for w in audit.get("weaknesses", [])]))
+            with ac2:
+                st.info("**Tailoring Recommendations:**\n" + "\n".join([f"- {t}" for t in audit.get("tailoring_advice", [])]))
+                st.write("**Formatting Risk Assessment:**")
+                st.write("\n".join([f"- {f}" for f in audit.get("formatting_risks", [])]))
+
+
+# ==========================================
+# TAB 9: Live Preview & Export
+# ==========================================
+with tabs[8]:
+    st.subheader("Live ATS Resume Preview & Export")
+    st.caption(f"Template active: **{res.selected_template}** • Format: ATS Single-Column")
+
+    # Action Bar for Downloads
+    candidate_name = res.personal_info.full_name or "Candidate"
+    pdf_filename = generate_resume_filename(candidate_name, "pdf")
+    docx_filename = generate_resume_filename(candidate_name, "docx")
+
+    d_col1, d_col2, d_col3 = st.columns([1, 1, 2])
+    with d_col1:
+        try:
+            pdf_bytes = generate_resume_pdf(res)
+            st.download_button(
+                label="📥 Download PDF",
+                data=pdf_bytes,
+                file_name=pdf_filename,
+                mime="application/pdf",
+                use_container_width=True,
             )
+        except Exception as e:
+            st.error(f"PDF Error: {e}")
 
-        with prev_tab_md:
-            st.caption("Clean GitHub-flavored markdown:")
-            st.markdown(gen_resume.get("_rendered_markdown", ""))
+    with d_col2:
+        try:
+            docx_bytes = generate_resume_docx(res)
+            st.download_button(
+                label="📥 Download Word (DOCX)",
+                data=docx_bytes,
+                file_name=docx_filename,
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                use_container_width=True,
+            )
+        except Exception as e:
+            st.error(f"DOCX Error: {e}")
 
-        with prev_tab_json:
-            st.caption("Raw structured data received from Claude AI:")
-            st.json(gen_resume)
+    with d_col3:
+        st.caption(f"Files: `{pdf_filename}` • `{docx_filename}`")
+
+    st.divider()
+
+    # Rendered HTML Preview
+    preview_html = render_resume_html(res)
+    st.markdown(preview_html, unsafe_allow_html=True)

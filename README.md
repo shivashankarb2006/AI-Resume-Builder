@@ -1,262 +1,238 @@
-# AI Resume Builder
+# AI Resume Builder — ATS-Friendly Resume Generator
 
-<p align="center">
-  <img src="https://cdn-icons-png.flaticon.com/512/3135/3135768.png" width="100" alt="AI Resume Builder Logo" />
-</p>
+> **Build an ATS-friendly resume with AI — locally, securely, and with zero paid cloud API dependencies.**
 
-<p align="center">
-  <b>Create an ATS-friendly resume tailored to your dream job with AI.</b>
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/Python-3.10%2B-blue?logo=python" alt="Python 3.10+" />
-  <img src="https://img.shields.io/badge/Streamlit-1.35%2B-FF4B4B?logo=streamlit" alt="Streamlit" />
-  <img src="https://img.shields.io/badge/Anthropic-Claude_3.5_Sonnet-purple?logo=anthropic" alt="Claude API" />
-  <img src="https://img.shields.io/badge/Tests-Pytest_Passing-success?logo=pytest" alt="Pytest Passing" />
-  <img src="https://img.shields.io/badge/License-MIT-green" alt="MIT License" />
-</p>
+[![Python](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://www.python.org/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-1.30%2B-red.svg)](https://streamlit.io/)
+[![Ollama](https://img.shields.io/badge/AI-Ollama%20(llama3.2)-orange.svg)](https://ollama.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ---
 
 ## 📌 Overview
 
-**AI Resume Builder** is an open-source, production-ready web application that helps software engineers, students, and professionals craft Applicant Tracking System (ATS) compliant resumes tailored to specific job descriptions.
+**AI Resume Builder** is an open-source, local-first web application designed to help students, recent graduates, and software engineers craft clean, high-impact, ATS-optimized resumes.
 
-Powered by **Anthropic Claude 3.5 Sonnet** and built with **Streamlit**, the application adheres to strict anti-hallucination rules: **it never invents qualifications, fake metrics, or unearned skills**. Instead, it converts candidate facts into high-impact, action-oriented bullet points, detects keyword gaps against target job postings, calculates an ATS compatibility score, and exports recruiter-ready Microsoft Word (`.docx`), print-ready PDF, and plain text formats.
-
----
-
-## ✨ Features
-
-- **🛡️ 100% Fact-Preserving AI:** Built with 17 non-negotiable system prompts ensuring Claude never fabricates companies, degrees, percentages, or skills.
-- **🎯 Dynamic Job Matching:** Tailors phrasing and highlights genuine candidate experiences that match target job requirements.
-- **📊 ATS Compatibility Analyzer:**
-  - Granular score breakdown out of 100 (*Keyword Match, Skills Alignment, Experience Relevance, Structure, and Completeness*).
-  - Side-by-side keyword inspection (Matched vs. Missing job requirements).
-  - Transparent ethical suggestions (never recommends adding skills dishonestly).
-- **📥 Multi-Format Resume Export:**
-  - **Microsoft Word (`.docx`):** ATS-compliant single-column layout with standard 0.6" margins, Arial typography, and subtle divider rules.
-  - **Printable Vector PDF:** Standalone HTML template with `@media print` rules for browser-direct vector PDF printing (`Ctrl + P`).
-  - **ATS Plain Text (`.txt`):** Unformatted plain text designed for pasting directly into job application text fields (Workday, Taleo, Greenhouse).
-  - **GitHub Markdown (`.md`):** Clean markdown view for developer profiles.
-- **⚡ Instant Demo / Mock Mode:** Allows testing the full generation, scoring, and download workflow offline without requiring an active Claude API key.
-- **🔒 Production Security:** Multi-tier secret resolution supporting `.env` files, Streamlit Cloud Secrets, and session-only keys with zero data leakage.
+Unlike traditional AI resume tools that transmit personal career information to third-party paid cloud APIs (OpenAI, Claude, etc.), **this application operates 100% locally on your computer** using **Ollama** and lightweight open-source models like `llama3.2`. Your data stays on your machine at all times.
 
 ---
 
-## 🛠️ Tech Stack
+## ✨ Key Features
 
-| Component | Technology | Description |
-| :--- | :--- | :--- |
-| **Frontend & UI** | [Streamlit](https://streamlit.io/) | Fast, reactive Python web dashboard with custom SaaS styling |
-| **AI & LLM** | [Anthropic Claude](https://www.anthropic.com/) | Claude 3.5 Sonnet (`claude-3-5-sonnet-20241022`) via official Python SDK |
-| **Document Generation** | [python-docx](https://python-docx.readthedocs.io/) | Low-level XML-based Microsoft Word (`.docx`) builder |
-| **Templating Engine** | [Jinja2](https://palletsprojects.com/p/jinja/) | Dynamic HTML/CSS resume document generation |
-| **Testing** | [pytest](https://pytest.org/) | Comprehensive unit test suite with 100% passing tests |
-| **Environment Config** | [python-dotenv](https://github.com/theskumar/python-dotenv) | Secure local environment variable management |
+- **🔒 100% Local & Private:** Runs entirely on your machine via Ollama. No API keys, no monthly fees, and no external data leaks.
+- **🛡️ Strict Anti-Hallucination AI:** Enhances phrasing and action verbs without inventing fake credentials, metrics, companies, or technologies.
+- **⚡ Multiple Professional ATS Templates:**
+  - **Classic ATS:** Timeless single-column layout with traditional typography. Highest ATS parse rate.
+  - **Modern Professional:** Clean visual hierarchy with subtle slate/navy accents.
+  - **Technical Specialist:** Tailored for Software Engineers, IT, and AI/ML candidates with prominent technical skills and project highlights.
+- **🎯 Job Description Keyword Matcher:** Paste any job posting to identify matching skills, discover missing keywords, and tailor your bullet points truthfully.
+- **📊 Transparent ATS Heuristic Score:** Objective 0–100 score evaluating Section Completeness, Action Verbs, Technical Depth, and Formatting Hygiene.
+- **📑 Multi-Format Export:**
+  - **PDF Export:** Clean ReportLab engine with exact A4 margins, clickable links, and multi-page numbering.
+  - **Word (.docx) Export:** Editable Microsoft Word document with proper XML headings, bullet points, and hyperlinks.
+- **👀 Live In-App Preview:** Real-time paper-like rendering that instantly updates as you edit.
+- **📋 1-Click Demo Profile:** Instant demo profile loaded with realistic Computer Science student data.
 
 ---
 
 ## 🏗️ Architecture
 
-```text
-                    ┌─────────────────────────┐
-                    │     User / Candidate    │
-                    └────────────┬────────────┘
-                                 │
-                                 ▼
-             ┌─────────────────────────────────────────┐
-             │       Streamlit Multi-Tab Form          │
-             │   (Personal, Education, Skills, Exp)    │
-             └───────────────────┬─────────────────────┘
-                                 │
-                       [ Input Validation ]
-                       (src/validators.py)
-                                 │
-                ┌────────────────┴────────────────┐
-                ▼                                 ▼
-     ┌───────────────────────┐       ┌────────────────────────┐
-     │ Claude API (Prompts)  │       │   ATS Rule Analyzer    │
-     │  (src/claude_api.py)  │       │  (src/ats_analyzer.py) │
-     └──────────┬────────────┘       └───────────┬────────────┘
-                │                                │
-                ▼                                ▼
-     ┌───────────────────────┐       ┌────────────────────────┐
-     │ Structured JSON Model │       │  ATS Score Breakdown   │
-     │  (Zero Hallucinations)│       │  & Keyword Gap Badges  │
-     └──────────┬────────────┘       └────────────────────────┘
-                │
-                ▼
-     ┌────────────────────────────────────────────────────────┐
-     │                 Multi-Format Exporters                 │
-     │   • src/docx_generator.py   ➔  ATS DOCX (.docx)        │
-     │   • templates/resume.html   ➔  Vector PDF (Printable)  │
-     │   • src/resume_generator.py ➔  Plain Text (.txt)       │
-     └────────────────────────────────────────────────────────┘
+```
+User Input (Browser)
+       │
+       ▼
+Streamlit Frontend (app.py)
+       │
+       ├──► Pydantic Data Validation (models/resume_schema.py)
+       │
+       ├──► Local AI Layer (ai/ollama_client.py & ai/prompts.py)
+       │         │
+       │         ▼
+       │     Ollama LLM (llama3.2 running locally on localhost:11434)
+       │         │
+       │         ▼
+       │     Structured Resume Data & Improved Bullet Points
+       │
+       ├──► ATS Scoring & Keyword Matcher (ai/analyzer.py)
+       │
+       └──► Resume Rendering & Export Engines
+                 │
+                 ├──► Live HTML Preview (resume/renderer.py)
+                 ├──► ReportLab PDF Generator (resume/pdf_generator.py)
+                 └──► python-docx Generator (resume/docx_generator.py)
 ```
 
 ---
 
-## 📁 Project Structure
+## 🛠️ Technology Stack
 
-```text
-AI-Resume-Builder/
-│
-├── app.py                      # Main Streamlit application and UI router
-├── requirements.txt            # Project dependencies
-├── README.md                   # Project documentation & setup guide
-├── .gitignore                  # Git safeguard preventing secret & venv leakage
-├── .env.example                # Example environment variables template
-│
-├── .streamlit/
-│   └── config.toml             # Streamlit brand theme & security settings
-│
-├── src/
-│   ├── __init__.py             # Python package marker
-│   ├── validators.py           # Email, URL, and profile validation
-│   ├── prompts.py              # Strict anti-hallucination Claude prompts
-│   ├── claude_api.py           # Anthropic SDK client, JSON parser & mock mode
-│   ├── resume_generator.py     # Multi-format renderer (Text, HTML, Markdown)
-│   ├── ats_analyzer.py         # Keyword matcher, ATS scoring & suggestions
-│   └── docx_generator.py       # ATS-compliant Microsoft Word generator
-│
-├── templates/
-│   └── resume_template.html    # Print-ready ATS HTML/CSS resume template
-│
-└── tests/
-    ├── __init__.py             # Test suite marker
-    ├── test_validators.py      # Input validation unit tests
-    ├── test_claude_api.py      # Prompt & API error handling unit tests
-    ├── test_resume_generator.py# Rendering pipeline unit tests
-    ├── test_docx_generator.py  # DOCX structure & corruption tests
-    └── test_ats_analyzer.py    # Keyword matching & ATS scoring tests
-```
+| Layer | Technology | Purpose |
+|---|---|---|
+| **UI Framework** | Streamlit | Responsive, interactive, card-based web interface |
+| **Language** | Python 3.11+ | Core application logic and data pipelines |
+| **AI Inference** | Ollama (`llama3.2`) | Local LLM inference for summary & bullet point synthesis |
+| **Data Schema** | Pydantic v2 | Data validation, type safety, and serialization |
+| **PDF Engine** | ReportLab | Flowable-based, ATS-compliant A4 PDF generation |
+| **DOCX Engine** | python-docx | Editable Word document generation with native hyperlinks |
+| **Testing** | Pytest | Automated test suite for validation and export engines |
 
 ---
 
-## ⚙️ Installation & Local Setup
+## 🚀 Beginner Setup Guide (Windows)
 
-### Prerequisites
-- Python 3.10, 3.11, 3.12, or 3.13 installed
-- Git installed
-- Windows PowerShell, macOS Terminal, or Linux Bash
+Follow these exact steps to set up and run the project on Windows:
 
-### Step 1: Clone the Repository
-```bash
-git clone https://github.com/<your-username>/AI-Resume-Builder.git
-cd AI-Resume-Builder
-```
+### Step 1: Install Ollama & Pull the Model
 
-### Step 2: Create a Virtual Environment
+1. Download and install Ollama from [https://ollama.com/download](https://ollama.com/download).
+2. Open PowerShell or Terminal and download the recommended lightweight model:
+   ```powershell
+   ollama pull llama3.2
+   ```
+3. Ensure Ollama is running (you should see the Ollama llama icon in your Windows system tray, or run `ollama serve`).
 
-**On Windows (PowerShell):**
+### Step 2: Open the Project Folder
+
+Open your terminal or PowerShell and navigate to the project directory:
 ```powershell
-python -m venv venv
-.\venv\Scripts\Activate.ps1
+cd "c:\Users\hp\OneDrive\Desktop\AI Resume Builder"
 ```
 
-**On macOS / Linux:**
-```bash
-python3 -m venv venv
-source venv/bin/activate
+### Step 3: Create a Virtual Environment
+
+```powershell
+python -m venv .venv
 ```
 
-### Step 3: Install Dependencies
-```bash
+### Step 4: Activate the Virtual Environment
+
+```powershell
+.venv\Scripts\Activate.ps1
+```
+*(If you encounter an execution policy message in PowerShell, run `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` first).*
+
+### Step 5: Install Dependencies
+
+```powershell
 pip install -r requirements.txt
 ```
 
-### Step 4: Configure Environment Variables
-Copy `.env.example` to create your local `.env`:
+### Step 6: Start the Application
 
-```bash
-# On Windows PowerShell:
-Copy-Item .env.example .env
-
-# On macOS / Linux:
-cp .env.example .env
-```
-
-Open `.env` in your code editor and insert your Anthropic Claude API key:
-```env
-ANTHROPIC_API_KEY=sk-ant-api03-...
-```
-*(Note: If you don't have an API key yet, you can toggle **🧪 Demo / Mock Mode** directly in the sidebar to test the entire application for free!)*
-
-### Step 5: Launch the Application
 ```powershell
 streamlit run app.py
 ```
-Open `http://localhost:8501` in your browser!
+
+### What You Should See:
+- Your default web browser will open automatically to `http://localhost:8501`.
+- In the sidebar, the status badge will display **`● Ollama Online`** with `llama3.2` selected.
+- Click **"📋 Load Demo"** in the sidebar to immediately see a pre-filled resume and test PDF/DOCX downloads!
+
+---
+
+## ⚙️ Configuration (`.env`)
+
+No API keys are required! You can configure Ollama parameters using `.env`:
+
+```env
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.2
+OLLAMA_TIMEOUT_SECONDS=90
+```
 
 ---
 
 ## 🧪 Running Automated Tests
 
-The application includes a comprehensive test suite covering all modules:
+To run the automated test suite:
 
 ```powershell
-# Run all tests:
-pytest
-
-# Run tests with detailed output:
-pytest -v
+python -m pytest tests/ -v
 ```
 
-All 17 unit tests run in less than 2 seconds with zero network dependencies.
+All 21 unit tests cover:
+- Email, URL, and Phone validation routines
+- Filename sanitization and bullet point formatters
+- Pydantic schema validation and JSON serialization
+- PDF generation across all 3 templates (Classic, Modern, Technical)
+- DOCX generation across all 3 templates
+- ATS heuristic scoring and Job Matcher algorithms
 
 ---
 
-## 🚀 Deployment to Streamlit Community Cloud
+## 📂 Project Structure
 
-Deploying to **Streamlit Community Cloud** takes less than 3 minutes:
-
-1. **Push your code to GitHub:**
-   Make sure `.env` is ignored (already in `.gitignore`):
-   ```powershell
-   git add .
-   git commit -m "feat: complete production AI Resume Builder"
-   git push -u origin main
-   ```
-
-2. **Sign in to Streamlit Community Cloud:**
-   Visit [share.streamlit.io](https://share.streamlit.io) and log in with your GitHub account.
-
-3. **Create New App:**
-   - **Repository:** Select `your-username/AI-Resume-Builder`
-   - **Branch:** `main`
-   - **Main file path:** `app.py`
-
-4. **Configure Secrets:**
-   Click **Advanced Settings ➔ Secrets** and paste your Anthropic API Key in TOML format:
-   ```toml
-   ANTHROPIC_API_KEY = "sk-ant-api03-your-actual-api-key-here"
-   ```
-
-5. **Deploy:**
-   Click **Deploy!** Your app will build and go live with a public URL!
+```
+AI Resume Builder/
+├── app.py                      # Main Streamlit web application
+├── config.py                   # Centralized configuration & settings
+├── requirements.txt            # Python dependencies
+├── LICENSE                     # MIT License
+├── README.md                   # Full documentation & guides
+├── .env.example                # Example environment file
+├── .gitignore                  # Git ignore rules
+│
+├── ai/
+│   ├── __init__.py
+│   ├── base.py                 # Abstract AI provider interface
+│   ├── ollama_client.py        # Ollama HTTP client with error handling
+│   ├── prompts.py              # Dedicated anti-hallucination system prompts
+│   ├── resume_generator.py     # Section generation & bullet improvement
+│   └── analyzer.py             # ATS scoring heuristic & Job Matcher
+│
+├── models/
+│   ├── __init__.py
+│   └── resume_schema.py        # Pydantic v2 data models
+│
+├── resume/
+│   ├── __init__.py
+│   ├── templates.py            # Resume styling & theme tokens
+│   ├── renderer.py             # HTML/CSS live preview renderer
+│   ├── pdf_generator.py        # ReportLab PDF generator
+│   └── docx_generator.py       # python-docx Word generator
+│
+├── utils/
+│   ├── __init__.py
+│   ├── validation.py           # Email, URL, and input validation
+│   ├── helpers.py              # Filename & string helpers
+│   └── sample_data.py          # Demo profile dataset
+│
+├── assets/
+│   └── custom.css              # Custom UI styling
+│
+└── tests/
+    ├── __init__.py
+    ├── test_validation.py      # Input validation tests
+    ├── test_resume_schema.py   # Schema & serialization tests
+    ├── test_generators.py      # PDF & DOCX export tests
+    └── test_analyzer.py        # ATS scoring & keyword tests
+```
 
 ---
 
-## 🔒 Security & Privacy
+## 🌐 Cloud Deployment Notice
 
-- **No Hard-coded Secrets:** API keys are never stored in source code, logs, or repositories.
-- **Git Safeguards:** `.gitignore` excludes `.env`, `.streamlit/secrets.toml`, and virtual environment directories.
-- **Input Sanitization:** User inputs are sanitized to prevent injection attacks and null-byte exploits.
-- **Client Session Isolation:** Data entered by users stays strictly in their local browser session (`st.session_state`) and is never permanently stored on external databases.
+Because this application relies on a **locally running Ollama instance**, deploying to Streamlit Community Cloud without modifications will not connect to your computer's local Ollama server.
 
----
-
-## 🔮 Future Roadmap
-
-- [ ] Multiple ATS-approved typography themes (Times New Roman, Calibri, Georgia)
-- [ ] Cover letter generator tailored to target job requirements
-- [ ] LinkedIn profile summary optimizer
-- [ ] Interactive skill-gap learning resource recommendations
-- [ ] Multi-language resume translation support
+### Future Cloud Deployment Options:
+1. **Host Ollama on a Remote GPU Server:** Point `OLLAMA_BASE_URL` to a self-hosted cloud endpoint (e.g. RunPod, Vast.ai, AWS EC2).
+2. **Provider Swapping:** The AI layer uses an abstract provider interface (`ai/base.py`), enabling straightforward integration with OpenAI-compatible endpoints or free HuggingFace endpoints without rewriting application logic.
 
 ---
 
-## 📄 License
+## 💼 Portfolio & Resume Highlights
 
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+### Recruiter-Ready Summary
+> *"Built an end-to-end, privacy-focused AI Resume Builder in Python and Streamlit powered by local LLMs via Ollama. Features automated ATS keyword matching, multi-template styling, transparent scoring heuristics, and dual export to ReportLab PDF and python-docx."*
+
+### Resume Bullet Points
+- Engineered a full-stack local AI Resume Generator using **Streamlit**, **Python**, and **Ollama**, ensuring 100% data privacy with zero external API dependencies.
+- Implemented an ATS optimization engine featuring keyword gap analysis against job descriptions and a defensible 0–100 heuristic scoring algorithm.
+- Designed dual export pipelines utilizing **ReportLab** (A4 PDF with custom flowables and hyperlinks) and **python-docx** (native Word typography and styles).
+- Architected strict prompt engineering guards and Pydantic validation schemas to guarantee grounded outputs and eliminate AI hallucinations.
+
+---
+
+## 📜 License
+
+Distributed under the MIT License. See [LICENSE](LICENSE) for details.
