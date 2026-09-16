@@ -204,7 +204,7 @@ with st.sidebar:
 
 
 # --- Main Content Header ---
-st.title(config.APP_TITLE)
+st.title(f"📄 {config.APP_TITLE}")
 st.markdown(f"**{config.APP_SUBTITLE}**")
 
 # Top Banner if Ollama is Offline
