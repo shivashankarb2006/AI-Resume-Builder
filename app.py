@@ -147,7 +147,7 @@ with st.sidebar:
             st.session_state.ollama_model = new_m
             ai_client.model = new_m
 
-    with st.expander("🌐 Cloud / Endpoint Settings", expanded=False):
+    with st.expander("🌐 Cloud / Endpoint Settings", expanded=(not is_online)):
         custom_url = st.text_input(
             "Ollama Server URL",
             value=st.session_state.ollama_base_url,
@@ -204,18 +204,16 @@ with st.sidebar:
 
 
 # --- Main Content Header ---
-st.title(f"📄 {config.APP_TITLE}")
+st.title(config.APP_TITLE)
 st.markdown(f"**{config.APP_SUBTITLE}**")
 
 # Top Banner if Ollama is Offline
 if not is_online:
     st.error(
-        "🚨 **Ollama is not running locally!**\n\n"
-        "To enable AI summary and bullet improvement features:\n"
-        "1. Open your terminal or PowerShell.\n"
-        "2. Run: `ollama serve` (or open the Ollama desktop app).\n"
-        "3. Verify your model is pulled: `ollama pull llama3.2`.\n\n"
-        "*Note: You can still manually enter resume info, live preview, and export to PDF/DOCX without Ollama!*"
+        "🚨 **Ollama is offline (Not connected to local AI model)**\n\n"
+        "• **If running locally on your computer:** Ensure Ollama is running (`ollama serve`) and model is pulled (`ollama pull llama3.2`).\n"
+        "• **If viewing on Streamlit Cloud:** Cloud servers cannot access your laptop's `localhost` directly. Enter your remote/tunnel URL in the sidebar under **🌐 Cloud / Endpoint Settings**.\n\n"
+        "*Note: You can still fill in all resume info, view the live preview in all 3 templates, test ATS scoring, and download PDF & Word DOCX without Ollama!*"
     )
 
 
