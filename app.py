@@ -65,45 +65,23 @@ if css_file.exists():
 if "resume_data" not in st.session_state:
     st.session_state.resume_data = ResumeData()
 
-from ai.groq_client import GroqClient
+groq_key = ""
+try:
+    groq_key = st.secrets.get("GROQ_API_KEY", os.getenv("GROQ_API_KEY", ""))
+except Exception:
+    groq_key = os.getenv("GROQ_API_KEY", "")
 
-if "ai_provider" not in st.session_state:
-    try:
-        if st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY"):
-            st.session_state.ai_provider = "Groq Cloud (Free)"
-        else:
-            st.session_state.ai_provider = "Ollama (Local)"
-    except Exception:
-        st.session_state.ai_provider = "Ollama (Local)"
-
-if "groq_api_key" not in st.session_state:
-    try:
-        st.session_state.groq_api_key = st.secrets.get("GROQ_API_KEY", os.getenv("GROQ_API_KEY", ""))
-    except Exception:
-        st.session_state.groq_api_key = os.getenv("GROQ_API_KEY", "")
-
-if "ollama_base_url" not in st.session_state:
-    try:
-        st.session_state.ollama_base_url = st.secrets.get("OLLAMA_BASE_URL", config.OLLAMA_BASE_URL)
-    except Exception:
-        st.session_state.ollama_base_url = config.OLLAMA_BASE_URL
-
-if "ollama_model" not in st.session_state:
-    try:
-        st.session_state.ollama_model = st.secrets.get("OLLAMA_MODEL", config.OLLAMA_MODEL)
-    except Exception:
-        st.session_state.ollama_model = config.OLLAMA_MODEL
-
-
-# Initialize AI Client based on selected provider
-if st.session_state.ai_provider == "Groq Cloud (Free)":
-    ai_client = GroqClient(
-        api_key=st.session_state.groq_api_key,
-    )
+if groq_key:
+    ai_client = GroqClient(api_key=groq_key)
 else:
+    ollama_url = config.OLLAMA_BASE_URL
+    try:
+        ollama_url = st.secrets.get("OLLAMA_BASE_URL", config.OLLAMA_BASE_URL)
+    except Exception:
+        pass
     ai_client = OllamaClient(
-        base_url=st.session_state.ollama_base_url,
-        model=st.session_state.ollama_model,
+        base_url=ollama_url,
+        model=config.OLLAMA_MODEL,
     )
 
 
@@ -121,7 +99,7 @@ def clear_form():
 # --- Sidebar Navigation & Controls ---
 with st.sidebar:
     st.title("📄 AI Resume Builder")
-    st.caption("ATS-Friendly • Privacy-First • Dual Export")
+    st.caption("ATS-Friendly • Professional • Dual Export")
 
     # Privacy statement badge
     st.markdown(
@@ -129,82 +107,18 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
-    # Provider Selection
-    st.subheader("🤖 AI Engine")
-    provider_choice = st.radio(
-        "Select Provider",
-        options=["Ollama (Local)", "Groq Cloud (Free)"],
-        index=0 if st.session_state.ai_provider == "Ollama (Local)" else 1,
-        horizontal=True,
-        help="Use Ollama when running locally on your laptop. Use Groq Cloud for free cloud deployment.",
-    )
-    if provider_choice != st.session_state.ai_provider:
-        st.session_state.ai_provider = provider_choice
-        st.rerun()
-
-    # AI Health Check
-    is_online, status_msg = ai_client.is_available()
+    # AI Status Pill
+    is_online, _ = ai_client.is_available()
     if is_online:
         st.markdown(
-            f"<div class='status-pill status-online'>● AI Online ({st.session_state.ai_provider.split()[0]})</div>",
+            f"<div class='status-pill status-online'>● AI Assistant Ready</div>",
             unsafe_allow_html=True,
         )
     else:
         st.markdown(
-            f"<div class='status-pill status-offline'>● AI Offline</div>",
+            f"<div class='status-pill status-offline'>● AI Assistant Offline</div>",
             unsafe_allow_html=True,
         )
-
-    # Provider-specific configuration
-    if st.session_state.ai_provider == "Groq Cloud (Free)":
-        new_groq_key = st.text_input(
-            "Groq API Key (Free)",
-            type="password",
-            value=st.session_state.groq_api_key,
-            help="Get your 100% free key at console.groq.com (no credit card required).",
-        )
-        if new_groq_key != st.session_state.groq_api_key:
-            st.session_state.groq_api_key = new_groq_key
-            st.rerun()
-        if not st.session_state.groq_api_key:
-            st.caption("👉 Get a free API key at [console.groq.com](https://console.groq.com) to enable AI in the cloud.")
-    else:
-        # Local Ollama selection
-        installed_models = ai_client.list_models() if is_online else []
-        if installed_models:
-            model_options = list(set(installed_models + [st.session_state.ollama_model]))
-            selected_m = st.selectbox(
-                "Local Model",
-                options=model_options,
-                index=model_options.index(st.session_state.ollama_model)
-                if st.session_state.ollama_model in model_options else 0,
-                help="Models run completely locally on your computer via Ollama.",
-            )
-            if selected_m != st.session_state.ollama_model:
-                st.session_state.ollama_model = selected_m
-                ai_client.model = selected_m
-                st.rerun()
-        else:
-            new_m = st.text_input(
-                "Model Name",
-                value=st.session_state.ollama_model,
-                key="model_name_input",
-                help="Default model e.g. llama3.2. Run 'ollama pull llama3.2' in terminal to install.",
-            )
-            if new_m != st.session_state.ollama_model:
-                st.session_state.ollama_model = new_m
-                ai_client.model = new_m
-
-        with st.expander("🌐 Cloud / Endpoint Settings", expanded=False):
-            custom_url = st.text_input(
-                "Ollama Server URL",
-                value=st.session_state.ollama_base_url,
-                help="Default: http://localhost:11434. If deployed to Streamlit Cloud, enter your tunnel or remote URL here.",
-            )
-            if custom_url != st.session_state.ollama_base_url:
-                st.session_state.ollama_base_url = custom_url
-                ai_client.base_url = custom_url
-                st.rerun()
 
     st.divider()
 
@@ -255,20 +169,12 @@ with st.sidebar:
 st.title(config.APP_TITLE)
 st.markdown(f"**{config.APP_SUBTITLE}**")
 
-# Top Banner if AI is Offline
+# Notice if AI features are offline
 if not is_online:
-    if st.session_state.ai_provider == "Groq Cloud (Free)":
-        st.info(
-            "🔑 **AI is currently offline.** To enable 1-click AI generation on this cloud deployment, enter a free Groq API key in the left sidebar under **🤖 AI Engine** (get one free in 30 seconds at [console.groq.com](https://console.groq.com) — no credit card needed).\n\n"
-            "*All resume editing, live preview, ATS scoring, Job Matcher, and PDF/DOCX exports are 100% active and working right now!*"
-        )
-    else:
-        st.info(
-            "🌐 **Cloud Deployment / Local AI Notice:**\n\n"
-            "• **100% of resume editing, live preview, ATS scoring, Job Matcher, and PDF/DOCX downloads are fully functional right now!**\n"
-            "• **Why is Ollama offline here?** Ollama runs locally on your PC. Cloud servers cannot access your private computer.\n"
-            "• **To enable AI on this cloud link:** In the sidebar under **🤖 AI Engine**, select **Groq Cloud (Free)** and paste a free key (no credit card required), or run the app locally with Ollama!"
-        )
+    st.info(
+        "💡 **Notice:** Automated AI assistant is currently in manual mode on this public instance. "
+        "All resume editing, live preview, 3 ATS templates, ATS scoring, Job Matcher, PDF download, and Word DOCX download are 100% active!"
+    )
 
 
 # --- Tabs Organization ---
@@ -373,8 +279,8 @@ with tabs[1]:
 
     col_btn, col_info = st.columns([1, 3])
     with col_btn:
-        if st.button("✨ Generate with AI", disabled=not is_online, help="Generate a truthful summary using local Ollama"):
-            with st.spinner("AI is synthesizing your career details locally..."):
+        if st.button("✨ Generate with AI", disabled=not is_online, help="Generate a truthful summary using AI"):
+            with st.spinner("AI is synthesizing your career details..."):
                 try:
                     generated_summary = generate_professional_summary(res, ai_client)
                     res.summary = generated_summary
@@ -384,7 +290,7 @@ with tabs[1]:
 
     with col_info:
         if not is_online:
-            st.info("Start Ollama locally to enable 1-click AI summary generation.")
+            st.caption("AI generation is offline on this public instance. You can write or edit your summary directly below.")
         else:
             st.caption("The AI strictly synthesizes your education, skills, and projects without inventing fake metrics.")
 
@@ -834,9 +740,8 @@ with tabs[7]:
             else:
                 st.caption("Great coverage! All detected core skills are represented.")
 
-    # Contextual AI Audit
     if st.button("🤖 Run Deep AI Resume Audit", disabled=not is_online):
-        with st.spinner("Auditing resume against ATS standards using local LLM..."):
+        with st.spinner("Auditing resume against ATS standards using AI..."):
             audit = analyze_resume_with_ai(res, ai_client)
             st.write("### 🔍 AI Audit Findings")
 
